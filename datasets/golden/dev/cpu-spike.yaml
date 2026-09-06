@@ -1,0 +1,34 @@
+# 黄金集草稿（issue 05）——预标注初稿待人工核对，核对记录写入 issue Comments
+# 场景: CPU 飙高（资源类）
+# 数据源: deploy/alerts-dump.jsonl 实测切片（fired_at/resolved_at 未编造）
+# 标注状态: DRAFT（Agent 初稿）→ 待人工抽核 → 双签回填
+
+scenario: cpu-spike
+root_cause: Pumba 把 stress-ng 注入 api-gw cgroup 打满其唯一 CPU 核，业务流量下 uvicorn 事件循环与线程池排队，非
+  DB 路径 P95 从 ~5ms 涨到 ~95ms（空载时 CFS 公平调度下饿不出延迟）
+investigation_path:
+- 查 Prometheus ALERTS 与相关资源指标（CPU/内存）确认资源水位
+- docker inspect/stats 查容器 cgroup 限制与实际用量
+- 排除部署变更后定位注入源/超限进程
+remediation: 停掉业务探针与 Pumba/stress-ng 容器并恢复容器 cpuset，观察非 DB 路径 P95 回落至 0.05s 以内
+runs:
+- started_at: '2026-09-06T12:45:41Z'
+  recovered_at: '2026-09-06T12:48:55Z'
+  alert_timeline:
+  - alert_name: DemoApiGwHighLatency
+    labels:
+      alertname: DemoApiGwHighLatency
+      scenario: cpu-spike
+      severity: warning
+    fired_at: '2026-09-06T12:47:01.474Z'
+    resolved_at: '2026-09-06T12:48:46.474Z'
+- started_at: '2026-09-06T12:49:07Z'
+  recovered_at: '2026-09-06T12:52:00Z'
+  alert_timeline:
+  - alert_name: DemoApiGwHighLatency
+    labels:
+      alertname: DemoApiGwHighLatency
+      scenario: cpu-spike
+      severity: warning
+    fired_at: '2026-09-06T12:50:31.474Z'
+    resolved_at: '2026-09-06T12:51:51.474Z'

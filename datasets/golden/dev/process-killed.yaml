@@ -1,0 +1,55 @@
+# 黄金集草稿（issue 05）——预标注初稿待人工核对，核对记录写入 issue Comments
+# 场景: 进程被杀（Pumba SIGKILL worker 主进程）（故障类）
+# 数据源: deploy/alerts-dump.jsonl 实测切片（fired_at/resolved_at 未编造）
+# 标注状态: DRAFT（Agent 初稿）→ 待人工抽核 → 双签回填
+
+scenario: process-killed
+root_cause: pumba kill 向 worker 容器 PID 1 发 SIGKILL，容器 ExitCode=137 退出且无重启策略，消费能力瞬间归零而提交侧持续灌任务，队列深度越过
+  20 后持续增长（实测 12 线程探针下净增 ~24/s）；积压任务即滞留 pending，DemoTasksStuckPending 随之触发；与 OOM 剧本区分点——被杀的是消费端（ExitCode=137
+  实测确认），提交面完全正常
+investigation_path:
+- 查 up 指标与容器退出码/重启记录定位故障进程
+- 查业务指标（miss 率/滞留任务）确认受影响面
+- 重启/恢复组件后回查指标确认收敛
+remediation: 先移除 Pumba（kill 值守循环）再重启 worker，恢复后以约 9/s 消化积压
+runs:
+- started_at: '2026-09-06T12:55:42Z'
+  recovered_at: '2026-09-06T13:04:53Z'
+  alert_timeline:
+  - alert_name: DemoQueueDepthHigh
+    labels:
+      alertname: DemoQueueDepthHigh
+      instance: api-gw:8000
+      job: demo-api-gw
+      severity: warning
+    fired_at: '2026-09-06T12:58:01.474Z'
+    resolved_at: '2026-09-06T13:04:41.474Z'
+  - alert_name: DemoTasksStuckPending
+    labels:
+      alertname: DemoTasksStuckPending
+      instance: api-gw:8000
+      job: demo-api-gw
+      scenario: protocol-mismatch
+      severity: critical
+    fired_at: '2026-09-06T12:59:01.474Z'
+    resolved_at: '2026-09-06T13:04:46.474Z'
+- started_at: '2026-09-06T13:05:16Z'
+  recovered_at: '2026-09-06T13:14:04Z'
+  alert_timeline:
+  - alert_name: DemoQueueDepthHigh
+    labels:
+      alertname: DemoQueueDepthHigh
+      instance: api-gw:8000
+      job: demo-api-gw
+      severity: warning
+    fired_at: '2026-09-06T13:07:31.474Z'
+    resolved_at: '2026-09-06T13:13:46.474Z'
+  - alert_name: DemoTasksStuckPending
+    labels:
+      alertname: DemoTasksStuckPending
+      instance: api-gw:8000
+      job: demo-api-gw
+      scenario: protocol-mismatch
+      severity: critical
+    fired_at: '2026-09-06T13:08:31.474Z'
+    resolved_at: '2026-09-06T13:13:51.474Z'
