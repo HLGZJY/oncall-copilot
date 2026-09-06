@@ -1,0 +1,38 @@
+# 黄金集草稿（issue 05）——预标注初稿待人工核对，核对记录写入 issue Comments
+# 场景: 慢 SQL（tasks 表长持写锁）（业务类）
+# 数据源: deploy/alerts-dump.jsonl 实测切片（fired_at/resolved_at 未编造）
+# 标注状态: DRAFT（Agent 初稿）→ 待人工抽核 → 双签回填
+
+scenario: slow-sql
+root_cause: 注入会话对 tasks 表持有 LOCK TABLES WRITE 并 SLEEP，api-gw 全部 tasks 读写阻塞在表锁上，连接池随之打满
+investigation_path:
+- 查 /tasks P95、连接池占用与 5xx 率定位到 DB 路径
+- 查 MySQL processlist/data_locks 看持锁与等待会话
+- 确认锁类型（表锁/行锁/死锁环）与全局变量是否被改动
+remediation: KILL 持锁会话释放表锁，等阻塞请求排空（≤35s）后 /tasks 延迟与连接池占用回落
+runs:
+- started_at: '2026-09-06T13:32:43Z'
+  recovered_at: '2026-09-06T13:36:36Z'
+  alert_timeline:
+  - alert_name: DemoDbPoolSaturated
+    labels:
+      alertname: DemoDbPoolSaturated
+      instance: api-gw:8000
+      job: demo-api-gw
+      scenario: slow-sql
+      severity: warning
+    fired_at: '2026-09-06T13:34:16.474Z'
+    resolved_at: '2026-09-06T13:35:21.474Z'
+  - alert_name: DemoTasksHighLatency
+    labels:
+      alertname: DemoTasksHighLatency
+      scenario: slow-sql
+      severity: warning
+    fired_at: '2026-09-06T13:34:21.474Z'
+    resolved_at: '2026-09-06T13:36:31.474Z'
+  - alert_name: DemoHighErrorRate
+    labels:
+      alertname: DemoHighErrorRate
+      severity: critical
+    fired_at: '2026-09-06T13:35:56.474Z'
+    resolved_at: '2026-09-06T13:36:31.474Z'

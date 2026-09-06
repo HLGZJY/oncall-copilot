@@ -1,0 +1,27 @@
+# 黄金集草稿（issue 05）——预标注初稿待人工核对，核对记录写入 issue Comments
+# 场景: OOM（api-gw 内存超限被内核杀死）（资源类）
+# 数据源: deploy/alerts-dump.jsonl 实测切片（fired_at/resolved_at 未编造）
+# 标注状态: DRAFT（Agent 初稿）→ 待人工抽核 → 双签回填
+
+scenario: oom-kill
+root_cause: api-gw 容器 cgroup memory.max 被压到当前 RSS 的 60%，业务探针流量迫使分配越限，内核 OOM killer
+  终结 PID 1（uvicorn），容器以 OOMKilled 退出，Prometheus 抓取失联（注入手段偏离原表 Pumba：stress-vm 的 OOM
+  受害者不可控，见 inject.sh 头注释）
+investigation_path:
+- 查 Prometheus ALERTS 与相关资源指标（CPU/内存）确认资源水位
+- docker inspect/stats 查容器 cgroup 限制与实际用量
+- 排除部署变更后定位注入源/超限进程
+remediation: 停探针、恢复容器内存上限并重新拉起 api-gw，等待健康检查通过、up 指标回到 1（实测注入 ~25s 内容器 OOMKilled 退出，确定性触发；DemoApiGwDown
+  按 for:2m 于 ~2 分钟后 firing）
+runs:
+- started_at: '2026-09-06T13:43:43Z'
+  recovered_at: '2026-09-06T13:46:50Z'
+  alert_timeline:
+  - alert_name: DemoApiGwDown
+    labels:
+      alertname: DemoApiGwDown
+      instance: api-gw:8000
+      job: demo-api-gw
+      severity: critical
+    fired_at: '2026-09-06T13:45:56.474Z'
+    resolved_at: '2026-09-06T13:46:36.474Z'
