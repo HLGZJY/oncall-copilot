@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -22,6 +22,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[3]
 RAW = REPO / "datasets/golden/_raw"
 ZERO = "0001-01-01T00:00:00Z"
+EXPECTED_RUNS = 3  # 每剧本 ×3 轮（dev 2 + holdout 1）
 
 INVESTIGATION_BY_CATEGORY = {
     "资源类": [
@@ -59,7 +60,7 @@ INVESTIGATION_BY_CATEGORY = {
 
 def parse_ts(ts: str) -> datetime:
     dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    return dt.astimezone(timezone.utc)
+    return dt.astimezone(UTC)
 
 
 def iso(dt: datetime) -> str:
@@ -85,7 +86,7 @@ def collect_timeline(slug: str, run: str, expected: set[str]) -> list[dict] | No
             rec = json.loads(line)
         except json.JSONDecodeError:
             # dump 并发追加可能产生被截断的半行（baseline 按行数切片的固有瑕疵），跳过
-            print(f"[{slug}-{run}] 警告：切片内 1 行 JSON 解析失败，已跳过", file=sys.stderr)
+            sys.stderr.write(f"[{slug}-{run}] 警告：切片内 1 行 JSON 解析失败，已跳过\n")
             continue
         for a in rec.get("alerts", []):
             fp = a["fingerprint"]
@@ -93,7 +94,13 @@ def collect_timeline(slug: str, run: str, expected: set[str]) -> list[dict] | No
             if labels.get("alertname") not in expected:
                 continue
             ev = events.setdefault(
-                fp, {"alert_name": labels["alertname"], "labels": labels, "fired_at": None, "resolved_at": None}
+                fp,
+                {
+                    "alert_name": labels["alertname"],
+                    "labels": labels,
+                    "fired_at": None,
+                    "resolved_at": None,
+                },
             )
             if a["status"] == "firing" and ev["fired_at"] is None:
                 ev["fired_at"] = a["startsAt"]
@@ -133,7 +140,10 @@ def build_run(slug: str, run: str, started_hint: str | None, expected: set[str])
 
 
 def find_scenario_dir(slug: str) -> Path:
-    """slug → chaos/scenarios/<NN>-<slug>/（目录名带序号前缀，按 scenario.yaml 的 name 字段匹配）。"""
+    """slug → chaos/scenarios/<NN>-<slug>/。
+
+    目录名带序号前缀，按 scenario.yaml 的 name 字段匹配。
+    """
     for f in (REPO / "chaos/scenarios").glob("*/scenario.yaml"):
         if yaml.safe_load(f.read_text(encoding="utf-8")).get("name") == slug:
             return f.parent
@@ -157,8 +167,9 @@ def main() -> None:
         r = build_run(slug, f"r{k}", None, expected)
         if r:
             runs[f"r{k}"] = r
-    if len(runs) < 3:
-        print(f"[{slug}] 警告：仅采集到 {len(runs)} 轮（{sorted(runs)}），草稿生成暂停——需补齐 dev2+holdout1")
+    if len(runs) < EXPECTED_RUNS:
+        msg = f"[{slug}] 警告：仅 {len(runs)} 轮（{sorted(runs)}），需补齐 dev2+holdout1"
+        sys.stderr.write(msg + "\n")
         sys.exit(1)
     out = REPO / "datasets/golden"
     (out / "dev").mkdir(parents=True, exist_ok=True)
@@ -172,8 +183,12 @@ def main() -> None:
             f"# 数据源: deploy/alerts-dump.jsonl 实测切片（fired_at/resolved_at 未编造）\n"
             f"# 标注状态: DRAFT（Agent 初稿）→ 待人工抽核 → 双签回填\n\n"
         )
-        p.write_text(header + yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
-        print(f"[{slug}] wrote {p} ({len(doc['runs'])} runs, timeline {[len(r['alert_timeline']) for r in doc['runs']]})")
+        body = header + yaml.safe_dump(doc, allow_unicode=True, sort_keys=False)
+        p.write_text(body, encoding="utf-8")
+        timeline_sizes = [len(r["alert_timeline"]) for r in doc["runs"]]
+        sys.stdout.write(
+            f"[{slug}] wrote {p} ({len(doc['runs'])} runs, timeline {timeline_sizes})\n"
+        )
 
 
 if __name__ == "__main__":
