@@ -4,7 +4,7 @@
 
 英文简历可用名：Agentic SRE Copilot / On-call Incident Agent。
 
-> **当前状态**：M0（环境与故障注入）未开工，代码尚未开始编写。本仓库目前以设计文档与知识库为主。
+> **当前状态**：M0（环境与故障注入）已落地——demo 业务系统、Prometheus/Loki/Grafana 遥测、8 条告警规则、11 个故障剧本均可一键复现（见下方快速开始）；黄金评测集分批采集中，进度见 `.scratch/m0-environment/issues/05-*.md`。M1（告警接入）开发中。
 
 ---
 
@@ -63,19 +63,57 @@
 
 目标自主性水位：**L3 受控自动执行**（工具自动执行 + 自动检查结果，人工确认门兜底）。
 
-## 快速开始
+## 快速开始：复现「注入 → 告警」全流程
 
-> 环境尚未搭建（M0 未开工）。以下命令是目标形态，待 M0 落地后生效。
+> 前置：Docker Desktop（WSL2 后端）在跑；跑测试需 Python 3.11 虚拟环境。
+> `docker compose` 插件与 standalone `docker-compose` 均可，Makefile 会自动探测。
 
 ```bash
 git clone <repo-url> && cd oncall-copilot
 
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+# 1) 测试环境（Python 3.11）
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
-docker compose up -d          # 拉起 demo 业务系统 + Prometheus/Grafana/Loki
-pytest                        # 跑测试
+# 2) 一键拉起全栈：demo 业务系统 + Prometheus/Loki/Grafana + 告警链路
+make up
+curl http://127.0.0.1:8000/health
+#    → {"status":"ok","db":"up","redis":"up","queue_depth":...} 即健康
+#    Grafana: http://127.0.0.1:3000（匿名 Admin）；Prometheus: http://127.0.0.1:9090
+
+# 3) （可选）打一段温和业务流量
+make demo-load
+
+# 4) 注入故障剧本，1~2 分钟后观察告警
+make inject SCENARIO=01-cpu-spike
+curl 'http://127.0.0.1:9090/api/v1/query?query=ALERTS'
+#    → alertname=DemoApiGwHighLatency, alertstate=firing
+#    Alertmanager webhook 同步落盘：deploy/alerts-dump.jsonl
+#    Grafana 看板（compose_service=api-gw）可看到 P95 异常曲线；Loki 可查结构化日志
+
+# 5) 清理注入，告警在 for 窗口过后自动 resolved
+make cleanup SCENARIO=01-cpu-spike
+
+# 6) 跑测试（ruff + pytest）
+make test
 ```
+
+**Makefile 入口一览**：
+
+| 命令 | 作用 |
+|---|---|
+| `make up` / `make down` | 拉起 / 停止全栈（down 保留数据卷） |
+| `make demo-load [DURATION_SEC=60]` | 向 `POST /tasks` 打温和业务负载（默认强度不触发告警） |
+| `make inject SCENARIO=<剧本>` | 注入故障剧本；接受目录名（`01-cpu-spike`）或 slug（`cpu-spike`） |
+| `make cleanup SCENARIO=<剧本>` | 清理剧本注入 |
+| `make collect-run SCENARIO=<剧本> RUN=r1` | 黄金集单轮采集（注入→告警→清理→按 dump 实测落档） |
+| `make test` | `ruff check` + `ruff format --check` + 全量 pytest |
+
+**故障剧本库**：`chaos/scenarios/` 下 11 个剧本，覆盖资源/网络/业务/负载/故障/语义层六大类（含 11-protocol-mismatch 业务语义层故障），每个剧本自带 `inject.sh` + `cleanup.sh` + `scenario.yaml` 元数据。注入后对应的告警规则见 `deploy/prometheus/rules.yml`，"剧本 ↔ 期望告警"映射在各自 `scenario.yaml` 的 `expected_alerts` 字段。
+
+**黄金评测集**：分批采集中，进度见 `.scratch/m0-environment/issues/05-*.md`；目录约定与双集隔离（dev/holdout）见 `docs/design/m0-environment-design.md`。
+
+**演练录屏**：（占位，待黄金集采集完成后录制）
 
 ## 文档导航
 
