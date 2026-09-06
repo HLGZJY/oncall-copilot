@@ -1,0 +1,10 @@
+name: cpu-spike
+fault_type: CPU 飙高
+category: 资源类
+inject: chaos/scenarios/01-cpu-spike/inject.sh
+inject_method: pumba
+cleanup: chaos/scenarios/01-cpu-spike/cleanup.sh
+expected_alerts:
+  - DemoApiGwHighLatency
+expected_root_cause: Pumba 把 stress-ng 注入 api-gw cgroup 打满其唯一 CPU 核，业务流量下 uvicorn 事件循环与线程池排队，非 DB 路径 P95 从 ~5ms 涨到 ~95ms（空载时 CFS 公平调度下饿不出延迟）
+expected_remediation: 停掉业务探针与 Pumba/stress-ng 容器并恢复容器 cpuset，观察非 DB 路径 P95 回落至 0.05s 以内

@@ -26,7 +26,7 @@ from api_gw.metrics import (
     REQUEST_DURATION_SECONDS,
     REQUESTS_TOTAL,
 )
-from common.db import SessionLocal, Task, check_db, engine, init_db
+from common.db import SessionLocal, Task, check_db_direct, engine, init_db
 from common.logsetup import configure_logging
 from common.settings import load_settings
 
@@ -71,19 +71,30 @@ def _refresh_gauges() -> None:
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
     start = time.perf_counter()
-    response = await call_next(request)
-    # 未匹配路由一律记 "unmatched"：若回退到原始 path，404 扫描会让
-    # endpoint label 基数随 URL 无限膨胀（prometheus 高基数事故源）
-    route = request.scope.get("route")
-    endpoint = getattr(route, "path", None) or "unmatched"
-    REQUESTS_TOTAL.labels(request.method, endpoint, str(response.status_code)).inc()
-    REQUEST_DURATION_SECONDS.labels(endpoint).observe(time.perf_counter() - start)
+    try:
+        response = await call_next(request)
+    except Exception:
+        # 未处理异常由 ServerErrorMiddleware 兜底回 500，但不会流经下方统计——
+        # 必须在此补记，否则 5xx 指标对崩溃型故障失明（慢 SQL 剧本的池超时即此形态）
+        REQUESTS_TOTAL.labels(request.method, _endpoint(request), "500").inc()
+        REQUEST_DURATION_SECONDS.labels(_endpoint(request)).observe(time.perf_counter() - start)
+        raise
+    REQUESTS_TOTAL.labels(request.method, _endpoint(request), str(response.status_code)).inc()
+    REQUEST_DURATION_SECONDS.labels(_endpoint(request)).observe(time.perf_counter() - start)
     return response
+
+
+def _endpoint(request: Request) -> str:
+    # 未匹配路由一律记 "unmatched"：若回退到原始 path，404 扫描会让
+    # endpoint label 基数随 URL 无限膨胀（prometheus 高基数事故源）。
+    # 注意必须在路由匹配后读取（call_next 返回/抛出时 scope["route"] 才已写入）
+    route = request.scope.get("route")
+    return getattr(route, "path", None) or "unmatched"
 
 
 @app.get("/health")
 def health() -> Response:
-    db_ok = check_db()
+    db_ok = check_db_direct()
     depth = _queue_depth()
     redis_ok = depth >= 0
     ok = db_ok and redis_ok

@@ -1,0 +1,12 @@
+name: slow-sql
+fault_type: 慢 SQL（tasks 表长持写锁）
+category: 业务类
+inject: chaos/scenarios/02-slow-sql/inject.sh
+inject_method: custom-script
+cleanup: chaos/scenarios/02-slow-sql/cleanup.sh
+expected_alerts:
+  - DemoTasksHighLatency
+  - DemoDbPoolSaturated
+  - DemoHighErrorRate
+expected_root_cause: 注入会话对 tasks 表持有 LOCK TABLES WRITE 并 SLEEP，api-gw 全部 tasks 读写阻塞在表锁上，连接池随之打满
+expected_remediation: KILL 持锁会话释放表锁，等阻塞请求排空（≤35s）后 /tasks 延迟与连接池占用回落

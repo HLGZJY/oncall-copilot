@@ -21,6 +21,17 @@ engine = create_engine(
 )
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
+# /health 专用独立小池：健康检查不得依赖主连接池——主池被打满（如慢 SQL 剧本）
+# 时 /health 仍须如实反映"服务可达"，否则健康检查与业务故障共沉浮，告警正交性丧失
+health_engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    pool_recycle=300,
+    pool_size=2,
+    max_overflow=0,
+    pool_timeout=30,  # 排队等待而非报错，避免故障时 /health 503 风暴污染错误率告警
+)
+
 
 class Base(DeclarativeBase):
     pass
@@ -60,6 +71,17 @@ def init_db(retries: int = 15, delay: float = 2.0) -> None:
 def check_db() -> bool:
     try:
         with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        logger.warning("database health check failed", exc_info=True)
+        return False
+
+
+def check_db_direct() -> bool:
+    """走独立小池的 DB 探活（/health 专用，见 health_engine 注释）。"""
+    try:
+        with health_engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return True
     except Exception:
