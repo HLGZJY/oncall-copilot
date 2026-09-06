@@ -17,11 +17,8 @@ import pytest
 from pydantic import ValidationError
 
 from conftest import AM_FINGERPRINT, RESOLVED_ENDS, make_alert, make_webhook
-from oncall.ingest.normalize import (
-    normalize_alert,
-    normalize_webhook,
-    raw_identity_fingerprint,
-)
+from oncall.ingest.fingerprint import DEFAULT_DEDUP_WINDOW, canonical_fingerprint
+from oncall.ingest.normalize import normalize_alert, normalize_webhook
 from oncall.ingest.schemas import AlertmanagerAlert, AlertmanagerWebhook
 
 FIRED_EXPECTED = datetime(2026, 9, 6, 6, 28, 21, 474000, tzinfo=UTC)
@@ -121,33 +118,21 @@ class TestNormalizeMapping:
         assert normalized.labels["scenario"] == "cpu-spike"
 
 
-class TestRawIdentityFingerprint:
-    def test_deterministic_across_calls(self):
-        alert = AlertmanagerAlert.model_validate(make_alert())
-        assert raw_identity_fingerprint(alert) == raw_identity_fingerprint(
-            AlertmanagerAlert.model_validate(make_alert())
+class TestMainFingerprintLinkage:
+    def test_normalized_alert_carries_main_fingerprint(self):
+        """归一化产物带主指纹（G1）：= canonical label 子集 + 时间窗桶的 sha256。"""
+        normalized = normalize_alert(AlertmanagerAlert.model_validate(make_alert()))
+        assert normalized.fingerprint == canonical_fingerprint(
+            normalized.labels, normalized.fired_at, DEFAULT_DEDUP_WINDOW
         )
-
-    def test_is_64_hex_chars(self):
-        digest = raw_identity_fingerprint(AlertmanagerAlert.model_validate(make_alert()))
-        assert len(digest) == 64
-        int(digest, 16)  # hex 可解析
 
     def test_differs_from_am_builtin_fingerprint(self):
-        """AM 自带 fingerprint 是 16 位 FNV-1a；原始标识键必须与之可区分（防混用）。"""
-        digest = raw_identity_fingerprint(AlertmanagerAlert.model_validate(make_alert()))
-        assert digest != AM_FINGERPRINT
+        """AM 自带 fingerprint 是 16 位 FNV-1a（易变），主指纹与之可区分（防混用）。"""
+        normalized = normalize_alert(AlertmanagerAlert.model_validate(make_alert()))
+        assert normalized.fingerprint != AM_FINGERPRINT
 
-    def test_sensitive_to_starts_at_change(self):
-        """同 alert 新一轮 firing（startsAt 变）→ 原始标识不同 → 各自成行（窗口合并留给 03）。"""
-        old = AlertmanagerAlert.model_validate(make_alert())
-        new = AlertmanagerAlert.model_validate(make_alert(startsAt="2026-09-06T07:00:00.000Z"))
-        assert raw_identity_fingerprint(old) != raw_identity_fingerprint(new)
-
-    def test_sensitive_to_status_change(self):
-        """firing 与 resolved 的原始 payload 不同 → 标识不同。"""
-        firing = AlertmanagerAlert.model_validate(make_alert())
-        resolved = AlertmanagerAlert.model_validate(
-            make_alert(status="resolved", endsAt=RESOLVED_ENDS)
-        )
-        assert raw_identity_fingerprint(firing) != raw_identity_fingerprint(resolved)
+    def test_same_alert_same_firing_same_fingerprint(self):
+        """同一次 firing 无论重放多少次 → 指纹相同（合并与幂等的基础）。"""
+        first = normalize_alert(AlertmanagerAlert.model_validate(make_alert()))
+        replay = normalize_alert(AlertmanagerAlert.model_validate(make_alert()))
+        assert first.fingerprint == replay.fingerprint

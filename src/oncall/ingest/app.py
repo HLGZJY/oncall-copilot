@@ -10,6 +10,7 @@ dev 运行（仓库根目录）：
 from __future__ import annotations
 
 import os
+from datetime import timedelta
 
 from fastapi import FastAPI
 from sqlalchemy import create_engine
@@ -17,17 +18,28 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from oncall.db import create_tables
+from oncall.ingest.fingerprint import DEFAULT_DEDUP_WINDOW
 from oncall.ingest.schemas import AlertmanagerWebhook
 from oncall.ingest.service import ingest_webhook
 
 DATABASE_URL_ENV = "ONCALL_DATABASE_URL"
 DEFAULT_DATABASE_URL = "sqlite:///./oncall.db"
+DEDUP_WINDOW_SECONDS_ENV = "ONCALL_DEDUP_WINDOW_SECONDS"
 
 
-def create_app(engine: Engine | None = None) -> FastAPI:
-    """应用工厂：测试注入内存库引擎；进程启动走环境变量配置的 URL。"""
+def create_app(engine: Engine | None = None, dedup_window: timedelta | None = None) -> FastAPI:
+    """应用工厂：测试注入内存库引擎；进程启动走环境变量配置的 URL 与去重窗口。
+
+    时间窗默认 10 分钟（G1），可用 `ONCALL_DEDUP_WINDOW_SECONDS` 覆盖。
+    """
     if engine is None:
         engine = create_engine(os.environ.get(DATABASE_URL_ENV, DEFAULT_DATABASE_URL))
+    if dedup_window is None:
+        dedup_window = timedelta(
+            seconds=int(
+                os.environ.get(DEDUP_WINDOW_SECONDS_ENV, int(DEFAULT_DEDUP_WINDOW.total_seconds()))
+            )
+        )
     create_tables(engine)  # dev 建表（D-13：Alembic 延至切 MySQL 时引入）
 
     app = FastAPI(title="oncall-copilot", version="0.1.0")
@@ -40,7 +52,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         让 AM 的重试语义可见异常）。
         """
         with Session(engine) as session:
-            result = ingest_webhook(session, webhook)
+            result = ingest_webhook(session, webhook, dedup_window)
         return {"received": result.received, "deduped": result.deduped}
 
     return app
