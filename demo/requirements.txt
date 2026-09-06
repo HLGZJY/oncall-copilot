@@ -7,3 +7,4 @@ cryptography>=42,<50
 redis>=5,<7
 celery[redis]>=5.4,<6
 prometheus-client>=0.21,<1
+structlog>=24.1,<26

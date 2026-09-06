@@ -1,22 +1,30 @@
 """worker：Celery 消费端，把 tasks 表 pending 行置为 done（被观测目标）。
 
-消费延迟刻意保留 time.sleep(0.2)：模拟业务耗时，供 T2 的延迟/队列深度指标观测。
+消费延迟刻意保留 time.sleep(0.2)：模拟业务耗时，供延迟/队列深度指标观测。
+日志经 structlog 渲染 JSON 到 stdout，loki driver 直推 Loki。
 """
 
-import logging
 import time
 
+import structlog
 from celery import Celery
 from sqlalchemy.exc import SQLAlchemyError
 
 from common.db import SessionLocal, Task
+from common.logsetup import configure_logging
 from common.settings import load_settings
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-logger = logging.getLogger("worker")
+configure_logging("worker")
+logger = structlog.get_logger("worker")
 settings = load_settings()
 
 celery_app = Celery("demo", broker=settings.broker_url)
+# structlog 直接写 stdout（loki driver 采集）——禁掉 celery 的日志劫持与 stdout 重定向，
+# 否则 JSON 行会被包上 "WARNING/ForkPoolWorker" 前缀，破坏结构化格式
+celery_app.conf.update(
+    worker_hijack_root_logger=False,
+    worker_redirect_stdouts=False,
+)
 
 
 def _mark_done(task_id: int, attempts: int = 3, delay: float = 2.0) -> None:
@@ -25,16 +33,14 @@ def _mark_done(task_id: int, attempts: int = 3, delay: float = 2.0) -> None:
             with SessionLocal() as session:
                 task = session.get(Task, task_id)
                 if task is None:
-                    logger.error("task %d not found", task_id)
+                    logger.error("task not found", task_id=task_id)
                     return
                 task.status = "done"
                 session.commit()
-            logger.info("task %d done", task_id)
+            logger.info("task done", task_id=task_id)
             return
         except SQLAlchemyError:
-            logger.warning(
-                "db write failed for task %d (attempt %d/%d)", task_id, attempt, attempts
-            )
+            logger.warning("db write failed", task_id=task_id, attempt=attempt, attempts=attempts)
             time.sleep(delay)
     msg = f"failed to mark task {task_id} done after {attempts} attempts"
     raise RuntimeError(msg)
