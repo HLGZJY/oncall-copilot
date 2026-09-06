@@ -39,7 +39,7 @@ read_when: 执行 M0 前；评审 M0 方案时
 
 | 模块 | 动作 | 职责 | 目录 | 关联里程碑 |
 |---|---|---|---|---|
-| demo 业务系统 | 新增 | api-gw 接请求 → Celery worker 消费任务 → MySQL/Redis；暴露 `/health` 与业务指标；日志落盘 | `demo/`（`api-gw/`、`worker/`、共享 `common/`） | M0（被观测对象） |
+| demo 业务系统 | 新增 | api-gw 接请求 → Celery worker 消费任务 → MySQL/Redis；暴露 `/health` 与业务指标；日志落盘 | `demo/`（`api_gw/`、`worker/`、共享 `common/`） | M0（被观测对象） |
 | 遥测与告警配置 | 新增 | Prometheus 抓取配置、5–8 条告警规则、Loki 采集（promtail 或 docker loki driver，评审定）、Grafana 基础看板、Alertmanager webhook 落盘 | `deploy/`（`prometheus/`、`loki/`、`grafana/`） | M0 → M1 数据源 |
 | 故障剧本库 | 新增 | 8+ 注入脚本（bash/python/Pumba/locust），每个剧本一个目录：注入脚本 + `scenario.yaml` 元数据 + 清理脚本 | `chaos/scenarios/<NN>-<slug>/` | M0 → M3/M7 |
 | 黄金评测集 | 新增 | 每剧本 ×3 次执行的记录：触发/恢复时间、全部告警（数量/内容/时间）、预标注根因 + 标准排查路径 + 标准处置 | `datasets/golden/<slug>.yaml` | M0 → M7 黄金集 |

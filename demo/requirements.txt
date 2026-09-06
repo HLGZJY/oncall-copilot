@@ -1,0 +1,9 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+pydantic>=2.9,<3
+sqlalchemy>=2.0,<3
+pymysql>=1.1,<2
+cryptography>=42,<50
+redis>=5,<7
+celery[redis]>=5.4,<6
+prometheus-client>=0.21,<1
