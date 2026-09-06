@@ -110,6 +110,8 @@ class TestSourceGuards:
                     name = getattr(target, "id", None)
                     if name is None or name.isupper():
                         continue
+                    if name.startswith("__") and name.endswith("__"):
+                        continue  # dunder 标准约定(__all__ 等)不受 C8 约束
                     value = node.value
                     mutable = isinstance(value, (ast.ListComp, ast.DictComp, ast.SetComp)) or (
                         isinstance(value, ast.Call)
