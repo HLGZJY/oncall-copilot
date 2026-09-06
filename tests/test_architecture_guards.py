@@ -17,6 +17,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src" / "oncall"
 TESTS_ROOT = REPO_ROOT / "tests"
+MAX_FILE_LINES = 300  # C6: 单文件行数上限
+MAX_INLINE_PROMPT = 200  # A2: 内联超长 prompt 判定阈值（字符）
 
 HTTP_MODULES = {"httpx", "requests", "urllib3", "aiohttp"}
 LLM_MODULES = {"openai", "anthropic"}
@@ -46,7 +48,7 @@ class TestSourceGuards:
         too_long: list[tuple[str, int]] = []
         for path in _iter_py_files(SRC_ROOT):
             lines = sum(1 for _ in path.open(encoding="utf-8"))
-            if lines > 300:
+            if lines > MAX_FILE_LINES:
                 too_long.append((_rel_module(path), lines))
         assert not too_long, (
             f"文件超过 300 行上限: {too_long}。"
@@ -109,13 +111,10 @@ class TestSourceGuards:
                     if name is None or name.isupper():
                         continue
                     value = node.value
-                    mutable = (
-                        isinstance(value, (ast.ListComp, ast.DictComp, ast.SetComp))
-                        or (
-                            isinstance(value, ast.Call)
-                            and isinstance(value.func, ast.Name)
-                            and value.func.id in MUTABLE_FACTORIES
-                        )
+                    mutable = isinstance(value, (ast.ListComp, ast.DictComp, ast.SetComp)) or (
+                        isinstance(value, ast.Call)
+                        and isinstance(value.func, ast.Name)
+                        and value.func.id in MUTABLE_FACTORIES
                     )
                     if isinstance(value, (ast.List, ast.Dict, ast.Set)) or mutable:
                         offenders.append(f"{_rel_module(path)}::{name}")
@@ -138,9 +137,11 @@ class TestSourceGuards:
                     # 粗粒度启发：LLM 调用点必须来自 infra/llm（C5 已兜底），
                     # 这里抓的是关键字实参里出现超长字符串字面量（>200 字符的 system 提示）
                     for kw in node.keywords:
-                        if isinstance(kw.value, ast.Constant) and isinstance(
-                            kw.value.value, str
-                        ) and len(kw.value.value) > 200:
+                        if (
+                            isinstance(kw.value, ast.Constant)
+                            and isinstance(kw.value.value, str)
+                            and len(kw.value.value) > MAX_INLINE_PROMPT
+                        ):
                             offenders.append(f"{_rel_module(path)}:行{node.lineno}")
         assert not offenders, (
             f"发现内联超长 prompt: {offenders}。"
