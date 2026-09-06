@@ -33,6 +33,8 @@ docker-compose.override.yml
 deploy/alerts-dump.jsonl
 data/
 *.log
+# SQLite dev 库是运行时产物（ONCALL_DATABASE_URL 默认 sqlite:///./oncall.db），不入库
+*.db
 
 # ---- 操作系统 (Windows) ----
 Thumbs.db

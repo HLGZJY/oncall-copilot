@@ -3,7 +3,7 @@ title: "设计决策清单"
 summary: "已拍板的关键决策及理由；ADR 的三条判据与存放位置"
 source: docs/reference/_sources/项目信息.md + docs/prd.md + 2026-09-05 基调会话
 status: active
-updated: 2026-09-06
+updated: 2026-09-07
 read_when: 动手前想知道"这事儿定过没有"；或要新写 ADR 时
 ---
 
@@ -25,6 +25,7 @@ read_when: 动手前想知道"这事儿定过没有"；或要新写 ADR 时
 | D-10 | issue 追踪器选型 | **本地 `.scratch/` markdown，纳入版本控制**（非 GitHub Issues） | 仓库无远端、不依赖外部服务；issue 与代码同版本控制后，"实现了什么"和"为什么这么做"在同一条历史里，半年后回溯上下文不丢。沿用 mattpocock/skills 的本地 tracker 约定（`.scratch/<feature>/issues/<NN>-<slug>.md` + 5 个 triage 角色），日后切 GitHub Issues 只需改标签映射表，其余约定不变 | 已定 |
 | D-11 | 文档分层与母本归位 | 根目录 = 总纲（AGENTS/README/CONTEXT）；`docs/` = 细节知识权威；`docs/reference/_sources/` = 原始母本（archived，只回溯不引用）；跨项目工程纪律母本外置到 `~/.workbuddy/` | 消除"双权威"：此前根目录资料汇编与 `docs/` 提炼版内容同源，改哪份不明确 | 已定 |
 | D-12 | M0 目录布局与 `scenario.yaml` 契约 | demo 系统与混沌脚本**不进 `src/oncall`**（`demo/` + `chaos/scenarios/` + `datasets/golden/` 顶层目录）；`scenario.yaml` 九字段定稿（name/fault_type/category/inject/inject_method/cleanup/expected_alerts/expected_root_cause/expected_remediation）作为 M7 runner 输入契约冻结 | 被观测目标与 Agent 代码物理隔离，防 coverage/import-linter 门禁误伤；字段名被 M7 引用后改名牵连大，评审日（2026-09-06）拍板 | 已定 |
+| D-13 | `alert_events` 增列与迁移方式 | **增四列**：`dedup_count` / `last_fired_at` / `resolved_at` / `annotations_json`；`annotations_json` 同时存原始 payload 与 AM 自带 fingerprint（全 labels FNV-1a，易变，仅交叉溯源不作主指纹）；SQLite `create_all`（dev），Alembic 延至切 MySQL | 字段被 M2+ 引用后难改名；主指纹自算（canonical 子集 sha256）而非用 AM 自带 fingerprint，因其含易变 label 会抖动 | 已定（2026-09-06 评审 G5；issue 01–03 落地） |
 | D-14 | M1 主指纹是否含时间窗 | **含**：`fingerprint` = sha256(canonical label 子集 `{alertname, instance, job}` 存在者参与、字典序 + 0xFF 分隔 + **时间窗桶**)；合并查询取「当前桶 + 前一桶」两个候选指纹实现滑窗语义 | `alert_events.fingerprint` 带唯一约束（D-13 去重锚点）。若指纹只由 label 子集算出，同一告警任何时刻只能有一行，「超窗新行」与 `dedup_window` 均无从表达；并入时间窗桶后唯一约束 / 超窗新行 / 窗口可配三者同时成立。代价：桶边界附近（9:59 与 10:01）分属两行——保守方向，不漏收 | 已定（2026-09-07，issue 03 落地；与 CONTEXT.md「指纹 = 规则+实例+时间窗算出的稳定哈希」一致） |
 | D-15 | 计数口径：重放 vs 新 firing | **只在新 firing（`fired_at` 晚于 `last_fired_at`）时 `dedup_count++`**；原样重放 / 旧投递只跳过不计数；resolved 通知不计数，但若其 `startsAt` 晚于已见 firing 则计为一次新 firing（漏收兜底） | D-13 幂等硬要求（AM 非 2xx 退避重试）与「0 漏收」必须同时成立：重放不重复计数，未见过的 firing 即使只收到 resolved 也要补计 | 已定（2026-09-07，issue 03 落地；实测见 issue 03「0 漏收边界」） |
 

@@ -22,8 +22,8 @@ MAX_INLINE_PROMPT = 200  # A2: 内联超长 prompt 判定阈值（字符）
 
 HTTP_MODULES = {"httpx", "requests", "urllib3", "aiohttp"}
 LLM_MODULES = {"openai", "anthropic"}
-HTTP_ALLOWED = {"oncall/infra/http.py"}
-LLM_ALLOWED = {"oncall/infra/llm.py"}
+HTTP_ALLOWED = {"src/oncall/infra/http.py"}  # _rel_module 以仓库根为基准，含 src/ 前缀
+LLM_ALLOWED = {"src/oncall/infra/llm.py"}
 MUTABLE_FACTORIES = {"list", "dict", "set", "bytearray", "defaultdict", "Counter"}
 
 
