@@ -146,6 +146,26 @@ class TestGoldenSet:
         with pytest.raises(ValidationError):
             GoldenSet.model_validate(bad)
 
+    def test_resolved_before_fired_rejected(self):
+        # 时间序校验：标注员填反了要在 M0 拦截，不能等到 M7 判分才发现
+        bad = make_golden()
+        bad["runs"][0]["alert_timeline"][0]["resolved_at"] = "2026-09-06T10:00:00Z"  # fired 10:02
+        with pytest.raises(ValidationError) as exc:
+            GoldenSet.model_validate(bad)
+        assert "resolved_at" in str(exc.value)
+
+    def test_recovered_before_started_rejected(self):
+        bad = make_golden()
+        bad["runs"][0]["recovered_at"] = "2026-09-06T09:59:00Z"  # started 是 10:00
+        with pytest.raises(ValidationError) as exc:
+            GoldenSet.model_validate(bad)
+        assert "recovered_at" in str(exc.value)
+
+    def test_recovered_equal_started_passes(self):
+        ok = make_golden()
+        ok["runs"][0]["recovered_at"] = ok["runs"][0]["started_at"]
+        GoldenSet.model_validate(ok)  # 不抛即通过
+
     def test_extra_fields_forbidden(self):
         bad = make_golden()
         bad["expected_root_cause_x"] = "typo"

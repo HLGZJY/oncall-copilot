@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
@@ -57,6 +57,13 @@ class AlertEvent(BaseModel):
     fired_at: datetime
     resolved_at: datetime | None = None
 
+    @model_validator(mode="after")
+    def _resolved_not_before_fired(self) -> AlertEvent:
+        if self.resolved_at is not None and self.resolved_at < self.fired_at:
+            msg = f"resolved_at({self.resolved_at}) 早于 fired_at({self.fired_at})，时间序错误"
+            raise ValueError(msg)
+        return self
+
 
 class GoldenRun(BaseModel):
     """黄金集的一次执行记录（同一剧本跑 N 遍取其一）。"""
@@ -66,6 +73,15 @@ class GoldenRun(BaseModel):
     started_at: datetime
     recovered_at: datetime | None = None
     alert_timeline: list[AlertEvent] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _recovered_not_before_started(self) -> GoldenRun:
+        if self.recovered_at is not None and self.recovered_at < self.started_at:
+            msg = (
+                f"recovered_at({self.recovered_at}) 早于 started_at({self.started_at})，时间序错误"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class GoldenSet(BaseModel):

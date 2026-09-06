@@ -72,8 +72,10 @@ def _refresh_gauges() -> None:
 async def metrics_middleware(request: Request, call_next):
     start = time.perf_counter()
     response = await call_next(request)
+    # 未匹配路由一律记 "unmatched"：若回退到原始 path，404 扫描会让
+    # endpoint label 基数随 URL 无限膨胀（prometheus 高基数事故源）
     route = request.scope.get("route")
-    endpoint = getattr(route, "path", request.url.path)
+    endpoint = getattr(route, "path", None) or "unmatched"
     REQUESTS_TOTAL.labels(request.method, endpoint, str(response.status_code)).inc()
     REQUEST_DURATION_SECONDS.labels(endpoint).observe(time.perf_counter() - start)
     return response

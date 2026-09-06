@@ -27,6 +27,20 @@ celery_app.conf.update(
 )
 
 
+def _mark_failed(task_id: int) -> None:
+    """重试耗尽后的终态：置 failed 并记 error 级日志，保证失败可观测。"""
+    try:
+        with SessionLocal() as session:
+            task = session.get(Task, task_id)
+            if task is not None:
+                task.status = "failed"
+                session.commit()
+        logger.error("task failed", task_id=task_id, reason="db write retries exhausted")
+    except SQLAlchemyError:
+        # 连终态都写不进去（DB 彻底不可用）——只能靠日志暴露
+        logger.error("task failed and terminal state unwritable", task_id=task_id)
+
+
 def _mark_done(task_id: int, attempts: int = 3, delay: float = 2.0) -> None:
     for attempt in range(1, attempts + 1):
         try:
@@ -42,8 +56,7 @@ def _mark_done(task_id: int, attempts: int = 3, delay: float = 2.0) -> None:
         except SQLAlchemyError:
             logger.warning("db write failed", task_id=task_id, attempt=attempt, attempts=attempts)
             time.sleep(delay)
-    msg = f"failed to mark task {task_id} done after {attempts} attempts"
-    raise RuntimeError(msg)
+    _mark_failed(task_id)
 
 
 @celery_app.task(name="demo.process_task")
