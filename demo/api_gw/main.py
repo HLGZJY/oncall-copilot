@@ -18,6 +18,7 @@ from celery import Celery
 from fastapi import FastAPI, HTTPException, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from api_gw.metrics import (
     DB_POOL_SIZE,
@@ -25,8 +26,10 @@ from api_gw.metrics import (
     QUEUE_DEPTH,
     REQUEST_DURATION_SECONDS,
     REQUESTS_TOTAL,
+    STALE_PENDING,
+    TASK_CACHE_OPERATIONS,
 )
-from common.db import SessionLocal, Task, check_db_direct, engine, init_db
+from common.db import SessionLocal, Task, check_db_direct, engine, init_db, metrics_engine
 from common.logsetup import configure_logging
 from common.settings import load_settings
 
@@ -34,7 +37,16 @@ configure_logging("api-gw")
 logger = structlog.get_logger("api-gw")
 settings = load_settings()
 
+# 任务消息协议版本：随消息一起发给 worker。当前系统统一 v1；
+# 剧本 11 通过 redis 门禁 chaos:min_protocol 模拟"旧消息遇新协议要求"的版本偏斜
+TASK_PROTOCOL_VERSION = "v1"
+# GET /tasks/{id} 的 redis 缓存 TTL（秒）——剧本 10 缓存雪崩的失效域
+TASK_CACHE_TTL_SECONDS = 60
+
 redis_client = redis_lib.Redis.from_url(settings.redis_url, decode_responses=True)
+# 队列深度必须读 broker 所在的 redis db（broker_url 与 redis_url 的 db 可以不同——
+# 实测 broker 在 /1 而 redis_url 指向 /0，读错 db 会让 demo_queue_depth 恒为 0）
+broker_client = redis_lib.Redis.from_url(settings.broker_url, decode_responses=True)
 celery_app = Celery(broker=settings.broker_url)
 
 
@@ -53,7 +65,7 @@ class TaskIn(BaseModel):
 
 def _queue_depth() -> int:
     try:
-        return int(redis_client.llen("celery"))
+        return int(broker_client.llen("celery"))
     except Exception:
         logger.warning("redis queue depth query failed")
         return -1
@@ -66,6 +78,28 @@ def _refresh_gauges() -> None:
         DB_POOL_SIZE.set(engine.pool.size())
     except Exception:
         logger.warning("db pool gauge refresh failed")
+    _refresh_stale_pending()
+
+
+def _refresh_stale_pending() -> None:
+    """统计滞留 pending 超 60s 的任务数（业务语义层观测，剧本 11）。
+
+    走专用短超时引擎（metrics_engine）：tasks 表被锁死（死锁/慢 SQL 剧本）时
+    查询 2s 内失败并跳过刷新，/metrics 绝不因被观测故障而失联——
+    指标端点与故障共沉浮会让所有告警一起失明（实测教训，见 issue 04）。
+    """
+    try:
+        with metrics_engine.connect() as conn:
+            (count,) = conn.execute(
+                text(
+                    "SELECT COUNT(*) FROM tasks "
+                    "WHERE status = 'pending' "
+                    "AND created_at < UTC_TIMESTAMP() - INTERVAL 60 SECOND"
+                )
+            ).fetchone()
+        STALE_PENDING.set(count)
+    except Exception:
+        logger.warning("stale pending gauge refresh failed")
 
 
 @app.middleware("http")
@@ -126,15 +160,31 @@ def create_task(body: TaskIn) -> dict[str, Any]:
         session.commit()
         session.refresh(task)
         task_id, task_status = task.id, task.status
-    celery_app.send_task("demo.process_task", args=[task_id])
+    celery_app.send_task("demo.process_task", args=[task_id, TASK_PROTOCOL_VERSION])
     logger.info("task created", task_id=task_id, status=task_status)
     return {"id": task_id, "status": task_status}
 
 
 @app.get("/tasks/{task_id}")
 def get_task(task_id: int) -> dict[str, Any]:
+    # 读缓存（剧本 10 缓存雪崩的失效域）：TTL 60s，键 task:{id}
+    # 注意：worker 置 done 后缓存里仍是旧状态，最长 60s 不一致——demo 可接受
+    cache_key = f"task:{task_id}"
+    try:
+        cached = redis_client.get(cache_key)
+    except Exception:
+        cached = None
+    if cached is not None:
+        TASK_CACHE_OPERATIONS.labels(result="hit").inc()
+        return json.loads(cached)
+    TASK_CACHE_OPERATIONS.labels(result="miss").inc()
     with SessionLocal() as session:
         task = session.get(Task, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
-    return {"id": task.id, "status": task.status, "payload": task.payload}
+    data = {"id": task.id, "status": task.status, "payload": task.payload}
+    try:
+        redis_client.setex(cache_key, TASK_CACHE_TTL_SECONDS, json.dumps(data))
+    except Exception:
+        logger.warning("task cache write failed", task_id=task_id)
+    return data

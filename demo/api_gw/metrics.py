@@ -20,3 +20,15 @@ REQUEST_DURATION_SECONDS = Histogram(
 QUEUE_DEPTH = Gauge("demo_queue_depth", "Pending tasks in Celery broker queue")
 DB_POOL_USED = Gauge("demo_db_pool_used", "SQLAlchemy connections currently checked out")
 DB_POOL_SIZE = Gauge("demo_db_pool_size", "SQLAlchemy pool base size")
+# 剧本 10（缓存雪崩）：任务查询缓存命中/未命中计数
+TASK_CACHE_OPERATIONS = Counter(
+    "demo_task_cache_operations_total",
+    "Task read cache operations by result",
+    ["result"],
+)
+# 剧本 11（版本协议不兼容）：业务滞留指标——pending 超 60s 的任务数，
+# 指标日志全正常但业务停摆的语义层故障靠它告警
+STALE_PENDING = Gauge(
+    "demo_tasks_stale_pending",
+    "Tasks stuck in pending status for more than 60 seconds",
+)

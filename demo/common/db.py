@@ -32,6 +32,19 @@ health_engine = create_engine(
     pool_timeout=30,  # 排队等待而非报错，避免故障时 /health 503 风暴污染错误率告警
 )
 
+# /metrics 滞留任务统计专用引擎：必须与被观测故障正交——主池被打满（死锁/慢 SQL
+# 剧本）时 /metrics 仍须在抓取超时内返回。read_timeout=2s 保证 tasks 表被锁死时
+# 查询快速失败并跳过本次刷新，而不是拖垮整个指标端点
+metrics_engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    pool_recycle=300,
+    pool_size=1,
+    max_overflow=0,
+    pool_timeout=1,
+    connect_args={"read_timeout": 2},
+)
+
 
 class Base(DeclarativeBase):
     pass

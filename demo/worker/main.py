@@ -6,6 +6,7 @@
 
 import time
 
+import redis as redis_lib
 import structlog
 from celery import Celery
 from sqlalchemy.exc import SQLAlchemyError
@@ -17,6 +18,8 @@ from common.settings import load_settings
 configure_logging("worker")
 logger = structlog.get_logger("worker")
 settings = load_settings()
+
+redis_client = redis_lib.Redis.from_url(settings.redis_url, decode_responses=True)
 
 celery_app = Celery("demo", broker=settings.broker_url)
 # structlog 直接写 stdout（loki driver 采集）——禁掉 celery 的日志劫持与 stdout 重定向，
@@ -59,7 +62,29 @@ def _mark_done(task_id: int, attempts: int = 3, delay: float = 2.0) -> None:
     _mark_failed(task_id)
 
 
+def _protocol_supported(protocol: str) -> bool:
+    """剧本 11 的版本偏斜门禁：redis 键 chaos:min_protocol 存在时，低于该版本的
+    任务消息视为不兼容（模拟"旧消息遇新协议要求"）。键不存在 = 全兼容。"""
+    try:
+        min_protocol = redis_client.get("chaos:min_protocol")
+    except Exception:
+        return True
+    if not min_protocol:
+        return True
+    return protocol >= min_protocol
+
+
 @celery_app.task(name="demo.process_task")
-def process_task(task_id: int) -> None:
+def process_task(task_id: int, protocol: str = "v1") -> None:
+    # 语义层故障形态：消息被正常消费、指标日志全正常，但业务侧任务永远 pending。
+    # 旧消息被跳过后**不会**重新入队——真实版本偏斜事故的典型数据丢失形态
+    if not _protocol_supported(protocol):
+        logger.error(
+            "task protocol incompatible, task left pending",
+            task_id=task_id,
+            protocol=protocol,
+            min_protocol=redis_client.get("chaos:min_protocol"),
+        )
+        return
     time.sleep(0.2)
     _mark_done(task_id)
