@@ -62,8 +62,27 @@ done
 REC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "[run $RUN] recovered_at=$REC (residual n=$N)"
 
-# 等待 Alertmanager resolved webhook 全部落盘（group_interval 有延迟，最多再等 2min）
-sleep 120
+# 等待 Alertmanager resolved webhook 落盘：轮询 dump，切片内每个 firing 过的
+# alertname 都出现 resolved 事件即提前退出（实测通常 10–30s；原固定 sleep 120
+# 每轮白等 ~1.5min，12 轮累计 ~20min）
+for i in $(seq 1 12); do
+  DONE=$("C:/Users/heguo/.workbuddy/binaries/python/envs/default/Scripts/python.exe" -c "
+import sys, json
+names = set('$EXPECTED'.split(','))
+fired, resolved = set(), set()
+for line in open('$DUMP', encoding='utf-8').readlines()[$BASE:]:
+    try: rec = json.loads(line)
+    except Exception: continue
+    for a in rec.get('alerts', []):
+        n = a['labels'].get('alertname', '')
+        if n not in names: continue
+        if a['status'] == 'firing': fired.add(n)
+        elif a['status'] == 'resolved' and a['endsAt'] != '0001-01-01T00:00:00Z': resolved.add(n)
+print(1 if fired and fired <= resolved else 0)
+")
+  [ "$DONE" = "1" ] && break
+  sleep 10
+done
 tail -n +$((BASE + 1)) "$DUMP" > "$RAW/$SLUG-$RUN.jsonl"
 echo "{\"slug\":\"$SLUG\",\"run\":\"$RUN\",\"status\":\"ok\",\"started_at\":\"$START\",\"recovered_at\":\"$REC\"}" > "$RAW/$SLUG-$RUN.json"
 echo "[run $RUN] dump slice saved: $RAW/$SLUG-$RUN.jsonl ($(wc -l < "$RAW/$SLUG-$RUN.jsonl") lines)"
