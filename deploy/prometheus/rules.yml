@@ -1,4 +1,4 @@
-# demo 业务系统告警规则（issue 03，共 6 条，对应 m0-execution 8 类剧本的 W1 子集）
+# demo 业务系统告警规则（issue 03 起步 6 条，issue 04 补至 8 条，对应 11 个剧本）
 # 纪律：每条规则的 scenario label = 剧本 slug，与 chaos/scenarios/*/scenario.yaml
 # 的 expected_alerts 双向对应——剧本必须至少触发一条规则，规则必须有剧本可解释。
 groups:
@@ -46,16 +46,20 @@ groups:
           summary: "api-gw /tasks 路径 P95 延迟超过 0.5s"
           description: "疑似 DB 慢查询/锁等待（对应剧本 chaos/scenarios/02-slow-sql）"
 
-      # 慢 SQL 的伴随信号：被阻塞的请求把 SQLAlchemy 连接池（5+5）打满
+      # 慢 SQL 的伴随信号：被阻塞的请求把 SQLAlchemy 连接池（5+5）打满。
+      # 口径说明（issue 04 实测修正）：纯负载型打满（剧本 08）受服务端 GIL 与
+      # Docker Desktop 端口代理周期停顿影响，瞬时 used 深度抖动（5s 采样 min 可
+      # 跌到 2），刚性 used>=size 会 flaky——改用 1 分钟平均占用 >=70% 池容量；
+      # 慢 SQL/死锁等硬饱和形态 used 恒钉 10，两种口径下都触发，语义不变。
       - alert: DemoDbPoolSaturated
-        expr: demo_db_pool_used >= demo_db_pool_size
-        for: 30s
+        expr: avg_over_time(demo_db_pool_used[1m]) >= demo_db_pool_size * 0.7
+        for: 1m
         labels:
           severity: warning
           scenario: slow-sql
         annotations:
-          summary: "DB 连接池已打满（used >= size）"
-          description: "连接被慢 SQL/锁等待长期占用，新请求将超时失败"
+          summary: "DB 连接池持续高占用（1m 平均 >= 70% 池容量）"
+          description: "连接被慢 SQL/锁等待长期占用或读流量过载，新请求将排队甚至超时失败"
 
       # ── 通用规则（为 T4 后续剧本预留：负载类/故障类/网络类）───────────────────
       - alert: DemoHighErrorRate
@@ -87,3 +91,31 @@ groups:
         annotations:
           summary: "api-gw 抓取目标失联"
           description: "Prometheus 连续 2 分钟抓不到 /metrics，服务疑似挂死"
+
+      # ── 剧本 10-cache-avalanche：任务读缓存集体失效 ────────────────────────────
+      # 机制：GET /tasks/{id} 走 redis 缓存（TTL 60s），雪崩时全部转 miss 直打 DB。
+      # 阈值 10/s：健康态仅 TTL 过期产生零星 miss（<1/s），雪崩态探针下数百/s。
+      # 伴随信号：DB 连接池被读请求打满（DemoDbPoolSaturated 同步触发）。
+      - alert: DemoCacheMissSpike
+        expr: sum(rate(demo_task_cache_operations_total{result="miss"}[1m])) > 10
+        for: 1m
+        labels:
+          severity: warning
+          scenario: cache-avalanche
+        annotations:
+          summary: "任务读缓存未命中率骤增（疑似缓存雪崩）"
+          description: "缓存集体失效导致读流量直打 DB（对应剧本 chaos/scenarios/10-cache-avalanche）"
+
+      # ── 剧本 11-protocol-mismatch：任务滞留 pending（业务语义层）────────────────
+      # 机制：版本协议不兼容时消息被正常消费、无 5xx、无资源异常，唯一信号是
+      # 业务滞留——pending 超 60s 的任务数。指标日志都正常的故障只能靠业务指标告警。
+      # 阈值 >5：健康态任务秒级消费完，滞留基线为 0。
+      - alert: DemoTasksStuckPending
+        expr: demo_tasks_stale_pending > 5
+        for: 2m
+        labels:
+          severity: critical
+          scenario: protocol-mismatch
+        annotations:
+          summary: "大量任务滞留 pending 超 60 秒（业务停摆，指标层无异常）"
+          description: "疑似 worker 与消息协议版本不兼容，任务被消费但未处理（对应剧本 chaos/scenarios/11-protocol-mismatch）"

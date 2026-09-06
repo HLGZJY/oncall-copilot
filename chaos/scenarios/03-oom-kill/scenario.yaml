@@ -1,0 +1,10 @@
+name: oom-kill
+fault_type: OOM（api-gw 内存超限被内核杀死）
+category: 资源类
+inject: chaos/scenarios/03-oom-kill/inject.sh
+inject_method: custom-script
+cleanup: chaos/scenarios/03-oom-kill/cleanup.sh
+expected_alerts:
+  - DemoApiGwDown
+expected_root_cause: api-gw 容器 cgroup memory.max 被压到当前 RSS 的 60%，业务探针流量迫使分配越限，内核 OOM killer 终结 PID 1（uvicorn），容器以 OOMKilled 退出，Prometheus 抓取失联（注入手段偏离原表 Pumba：stress-vm 的 OOM 受害者不可控，见 inject.sh 头注释）
+expected_remediation: 停探针、恢复容器内存上限并重新拉起 api-gw，等待健康检查通过、up 指标回到 1（实测注入 ~25s 内容器 OOMKilled 退出，确定性触发；DemoApiGwDown 按 for:2m 于 ~2 分钟后 firing）

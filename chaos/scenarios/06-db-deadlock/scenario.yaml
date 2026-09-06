@@ -1,0 +1,12 @@
+name: db-deadlock
+fault_type: 数据库死锁（双事务锁环 + 死锁检测被关闭）
+category: 业务类
+inject: chaos/scenarios/06-db-deadlock/inject.sh
+inject_method: custom-script
+cleanup: chaos/scenarios/06-db-deadlock/cleanup.sh
+expected_alerts:
+  - DemoTasksHighLatency
+  - DemoDbPoolSaturated
+  - DemoHighErrorRate
+expected_root_cause: 两个事务分别持有第 1 行与末行+supremum next-key 锁并互相申请对方持有物，innodb_deadlock_detect 被关闭导致锁环无法自动解开；supremum 锁阻塞一切 INSERT，POST /tasks 全部挂起直至连接池超时
+expected_remediation: KILL 两个死锁会话（事务回滚释放锁），恢复 innodb_deadlock_detect=ON，等在途请求排空后延迟/连接池/错误率回落（实测三条告警全部触发；首轮实测曾因 /metrics 依赖主连接池导致 DemoApiGwDown 误触发——已用专用短超时引擎 metrics_engine 修复观测正交性）

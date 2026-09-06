@@ -1,0 +1,10 @@
+name: protocol-mismatch
+fault_type: 版本协议不兼容（旧消息被新协议要求静默跳过）
+category: 业务语义层
+inject: chaos/scenarios/11-protocol-mismatch/inject.sh
+inject_method: custom-script
+cleanup: chaos/scenarios/11-protocol-mismatch/cleanup.sh
+expected_alerts:
+  - DemoTasksStuckPending
+expected_root_cause: redis 门禁 chaos:min_protocol 被抬到 v2 而 api-gw 消息仍是 v1，worker 正常消费消息但判定协议过旧直接跳过（error 日志、不重新入队）——无 5xx、无资源异常、队列正常排空，唯一信号是任务滞留 pending 超 60s 的业务指标
+expected_remediation: 撤销协议门禁恢复新任务处理，并将滞留任务补偿为 failed 终态（实测补偿 145 条；消息重放属 M1 ingest 范畴）；告警依赖业务指标 DemoTasksStuckPending 而非资源指标——实测 firing 期间无 5xx、队列正常排空，语义层特征完整

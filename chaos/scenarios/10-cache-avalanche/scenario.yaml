@@ -1,0 +1,11 @@
+name: cache-avalanche
+fault_type: 缓存雪崩（任务读缓存被持续清空，读流量直打 DB）
+category: 故障类
+inject: chaos/scenarios/10-cache-avalanche/inject.sh
+inject_method: custom-script
+cleanup: chaos/scenarios/10-cache-avalanche/cleanup.sh
+expected_alerts:
+  - DemoCacheMissSpike
+  - DemoApiGwHighLatency
+expected_root_cause: flusher 容器以 50ms 间隔持续 FLUSHDB 清空缓存层（等效缓存持续不可用，即大规模 TTL 同时到期/内存淘汰风暴的极端形态），24 线程对 40 个热点 id 的读请求全部转 miss（实测 miss 率 ~160/s），/tasks/{id} 延迟随之抬升连带 DemoApiGwHighLatency；读负载对连接池太轻（PK 查询毫秒级），DemoDbPoolSaturated 实测未触发——预判已按实测修正；FLUSHDB 只清 db0 不碰 broker（db1），缓存故障不连带消息队列。注：10s 级 flush 间隔不够——热点键秒级回填，miss 窗口一闪而过（实测 miss 率仅 2.6/s）
+expected_remediation: 停 flusher 与探针，缓存随流量自然回温，miss 率与延迟回落（实测清理后全部告警恢复）；生产对策是 TTL 加随机抖动与多级缓存

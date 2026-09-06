@@ -1,0 +1,13 @@
+name: packet-loss
+fault_type: 网络丢包（api-gw 到 MySQL 流量 25% 丢包）
+category: 网络类
+inject: chaos/scenarios/05-packet-loss/inject.sh
+inject_method: pumba
+cleanup: chaos/scenarios/05-packet-loss/cleanup.sh
+expected_alerts:
+  - DemoTasksHighLatency
+  - DemoDbPoolSaturated
+  - DemoApiGwHighLatency
+  - DemoQueueDepthHigh
+expected_root_cause: Pumba netem 对 api-gw 出方向全部流量随机丢 25% 的包（实测：Docker Desktop/WSL2 上端口过滤不生效，改全流量），TCP 重传（RTO 200ms~1s）把 DB 查询延迟拉高且尾部抖动剧烈，与恒定延迟（剧本 04）的指标形态可区分；实测 DemoTasksHighLatency/DemoDbPoolSaturated 先后触发，DB 变慢连带队列堆积与非 DB 路径延迟抬升
+expected_remediation: 停止 Pumba（SIGTERM 触发 tc qdisc 撤销）与探针，等 TCP 重传队列排空后 /tasks 延迟回落（实测清理后全部告警恢复）

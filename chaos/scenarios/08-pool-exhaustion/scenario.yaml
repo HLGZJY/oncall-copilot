@@ -1,0 +1,12 @@
+name: pool-exhaustion
+fault_type: 连接打满（并发读把 DB 连接池占满）
+category: 负载类
+inject: chaos/scenarios/08-pool-exhaustion/inject.sh
+inject_method: load-generator
+cleanup: chaos/scenarios/08-pool-exhaustion/cleanup.sh
+expected_alerts:
+  - DemoDbPoolSaturated
+  - DemoCacheMissSpike
+  - DemoApiGwHighLatency
+expected_root_cause: 16 进程 × 24 线程 keep-alive 连接持续读不存在任务 id（缓存必未命中），每次 GET 占用池连接做 pre_ping+PK 查询，池 1 分钟平均占用稳定超过 70% 容量；404 流量天然 100% cache miss 连带 DemoCacheMissSpike，服务端线程池饱和连带非 DB 路径延迟抬升触发 DemoApiGwHighLatency（级联已实测确认）；必须 keep-alive+多进程——短连接/单进程多线程下客户端开销盖过服务端，池占用只到 3~4（实测）
+expected_remediation: 停掉压测探针，连接随请求结束即时归还池，无持久状态需要恢复

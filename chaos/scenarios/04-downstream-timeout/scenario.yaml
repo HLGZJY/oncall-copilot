@@ -1,0 +1,14 @@
+name: downstream-timeout
+fault_type: 下游超时（api-gw 到 MySQL 流量被注入延迟）
+category: 网络类
+inject: chaos/scenarios/04-downstream-timeout/inject.sh
+inject_method: pumba
+cleanup: chaos/scenarios/04-downstream-timeout/cleanup.sh
+expected_alerts:
+  - DemoTasksHighLatency
+  - DemoDbPoolSaturated
+  - DemoApiGwHighLatency
+  - DemoQueueDepthHigh
+  - DemoTasksStuckPending
+expected_root_cause: Pumba netem 对 api-gw 出方向全部流量注入 700ms 固定延迟（实测：Docker Desktop/WSL2 上端口过滤不生效，3s 全流量延迟会把抓取响应拖过 4s 超时导致 DemoApiGwDown 误触发、告警失明，700ms 为保住观测面的实测权衡），/tasks P95 越过 0.5s、连接池被占满；DB 变慢连带消费速率下降（队列堆积/任务滞留级联）与非 DB 路径延迟抬升，5 条告警全部实测触发
+expected_remediation: 停止 Pumba（SIGTERM 触发 tc qdisc 撤销）与探针，等在途请求排空后 /tasks 延迟与连接池占用回落（实测清理后全部告警恢复）

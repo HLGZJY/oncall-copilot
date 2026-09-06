@@ -1,0 +1,11 @@
+name: queue-backlog
+fault_type: 队列堆积（生产速率超过消费速率）
+category: 负载类
+inject: chaos/scenarios/07-queue-backlog/inject.sh
+inject_method: load-generator
+cleanup: chaos/scenarios/07-queue-backlog/cleanup.sh
+expected_alerts:
+  - DemoQueueDepthHigh
+  - DemoTasksStuckPending
+expected_root_cause: 探针 16 task/s 持续灌任务而 worker 消费能力约 9 task/s，Celery 队列净堆积约 7 task/s，深度越过 20 后持续增长；积压任务本身就是滞留 pending（实测 DemoTasksStuckPending 随之触发）；队列深度指标读 broker 所在 redis db1（本次开发期修复其真实反映）
+expected_remediation: 停掉压测探针，worker 以约 9/s 把积压自然消化完；扩容 worker 并发是生产上的对症手段
