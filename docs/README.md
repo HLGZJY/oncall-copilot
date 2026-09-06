@@ -33,6 +33,7 @@ read_when: 任何会话找不到该去哪找细节知识时
 - 想知道"这个选型为什么定了" → `design/decisions.md`
 - 复杂功能开工前要讨论方案 → 复制 `design/feature-design-template.md` 新建 `<功能名>-design.md` 填写
 - M8 展示层（Vue3 面板）设计 → `design/m8-showcase-design.md`（P0 六件核心信息件 + 演示故事线 + API 草案）
+- M0 环境与混沌注入设计与任务分解 → `design/m0-environment-design.md`（reviewed；issue 在 `.scratch/m0-environment/`）
 - 想知道"现在该干哪一步" → `plans/roadmap-m0-m9.md`
 - 想查术语/数据集/面试话术 → `reference/`
 - 想建 issue / 查 issue 状态 → `agents/issue-tracker.md`；triage 标签取值 → `agents/triage-labels.md`（issue 本体在根目录 `.scratch/`）

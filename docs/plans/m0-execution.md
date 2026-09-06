@@ -9,6 +9,8 @@ read_when: W1 执行 M0 时
 
 # M0 执行细案
 
+> **设计与任务拆解**：见 `docs/design/m0-environment-design.md`（含目录布局、T1–T6 任务分解、开放决策点）；本文件保留执行口径原文。
+
 ## 环境选型（决策 D-01/D-02）
 
 - **主环境**：极简自研 docker-compose（FastAPI + Celery + MySQL/Redis），2–3GB 内存，日常迭代
