@@ -101,7 +101,11 @@ read_when: 评审 M1 方案时；进入 M1 开发前；被问「M1 告警接入�
 - [ ] `/ingest` 接入真实 Alertmanager 通知：同故障 3 连发 → 归一化为 1 条 `alert_events`（`dedup_count=3`），**0 漏收**（每次 firing 都被计入合并，resolved 状态联动正确）
 - [ ] `/ingest` 幂等：同一 webhook payload 原样重放 3 次 → 仍归一化为 1 条，`dedup_count` 不变（依据 Alertmanager 对非 2xx 响应做指数退避重试的投递语义，见 §7 评审依据 R1/R3）
 - [ ] 批量 payload：单次 webhook 含多条 `alerts[]`（v4 契约为数组 + `truncatedAlerts` 截断字段，见评审依据 R1）→ 逐条归一化落库，不假设单条
-- [ ] 事件卡片：经 `GET /alerts/{id}/context` 可取回「告警本体 + 近期指标（近 N 分钟序列）+ 服务拓扑 + 近期变更（可为空）」JSON，字段齐全
+- [x] 事件卡片：经 `GET /alerts/{id}/context` 可取回「告警本体 + 近期指标（近 N 分钟序列）+ 服务拓扑 + 近期变更（可为空）」JSON，字段齐全
+  实测（2026-09-07，issue 05）：oncall.db 合并告警 #2 → 200，本体 13 键（D-17 契约）+
+  三源齐全（metrics 3 series / topology 2 targets / changes 占位空）；Prometheus 停止时
+  metrics/topology 显式 `unavailable`，卡片仍 200。另落地 `GET /alerts` 列表
+  （分页 + fingerprint 过滤）。详见 `.scratch/m1-alert-ingestion/issues/05-…md` 回填。
 - [ ] receiver 切换：双写开关生效（dump 可关可开），关闭 dump 后 ingest 不受影响；切换时点避开 M0-05 黄金集采集
 - [ ] 单元测试覆盖约定接缝：指纹纯函数（canonical 稳定性）、归一化映射、时间窗边界；全量 pytest 通过（coverage ≥80% 维持，只算 `src/oncall`）
 - [ ] 端到端演练 1 个剧本：注入 → 多告警 → 合并 1 条 → 卡片带上下文，实录（告警名/时间线/dedup_count）回填本节
