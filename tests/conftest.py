@@ -12,8 +12,12 @@ import pytest  # noqa: E402  (须在 sys.path 注入之后)
 
 @pytest.fixture(autouse=True)
 def _offline_by_default(request):
-    """单元测试默认断网；带 integration 标记的测试例外（单独 schedule）。"""
-    if "integration" in request.keywords:
+    """单元测试默认断网；带 integration 标记的测试例外（单独 schedule）。
+
+    inproc_asgi 豁免：FastAPI TestClient 走进程内 ASGI 传输，不发真实网络请求，
+    但事件循环自管道会被 pytest-socket 误伤，故显式放行（无真实网络 IO）。
+    """
+    if "integration" in request.keywords or "inproc_asgi" in request.keywords:
         return
     try:
         import pytest_socket  # noqa: PLC0415  (可选依赖)

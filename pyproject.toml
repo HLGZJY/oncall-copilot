@@ -63,7 +63,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]                    # 测试允许 assert
+"tests/**" = ["S101", "PLR2004"]         # 测试允许 assert；断言字面量即预期值（状态码/条数/哈希长度），抽常量反而降低可读性
 "tests/integration/**" = ["S", "T20"]    # 集成测试放宽（单独 schedule，不进 CI 默认门禁）
 
 [tool.ruff.lint.pylint]
@@ -85,6 +85,7 @@ addopts = "-q --strict-markers"
 testpaths = ["tests"]
 markers = [
     "integration: 需真实 LLM/环境，CI 默认跳过，单独 schedule 且带 token 预算 (A1)",
+    "inproc_asgi: 进程内 ASGI 传输测试（FastAPI TestClient），无真实网络 IO，A1 断网不适用",
 ]
 
 # ───────────────────────── coverage（C9 覆盖率门禁）─────────────────────────
