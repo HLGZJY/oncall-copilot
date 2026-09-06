@@ -1,0 +1,42 @@
+# 黄金集草稿（issue 05）——预标注初稿待人工核对，核对记录写入 issue Comments
+# 场景: 连接打满（并发读把 DB 连接池占满）（负载类）
+# 数据源: deploy/alerts-dump.jsonl 实测切片（fired_at/resolved_at 未编造）
+# 标注状态: DRAFT（Agent 初稿）→ 待人工抽核 → 双签回填
+
+scenario: pool-exhaustion
+root_cause: 16 进程 × 24 线程 keep-alive 连接持续读不存在任务 id（缓存必未命中），每次 GET 占用池连接做 pre_ping+PK
+  查询，池 1 分钟平均占用稳定超过 70% 容量；404 流量天然 100% cache miss 连带 DemoCacheMissSpike，服务端线程池饱和连带非
+  DB 路径延迟抬升触发 DemoApiGwHighLatency（级联已实测确认）；必须 keep-alive+多进程——短连接/单进程多线程下客户端开销盖过服务端，池占用只到
+  3~4（实测）
+investigation_path:
+- 查 QPS/提交速率与消费速率对比，确认净堆积方向
+- 查队列深度/连接池占用随时间曲线确认饱和点
+- 评估容量：扩容消费端或限流生产端
+remediation: 停掉压测探针，连接随请求结束即时归还池，无持久状态需要恢复
+runs:
+- started_at: '2026-09-06T12:41:59Z'
+  recovered_at: '2026-09-06T12:44:32Z'
+  alert_timeline:
+  - alert_name: DemoApiGwHighLatency
+    labels:
+      alertname: DemoApiGwHighLatency
+      scenario: cpu-spike
+      severity: warning
+    fired_at: '2026-09-06T12:43:11.474Z'
+    resolved_at: '2026-09-06T12:44:26.474Z'
+  - alert_name: DemoCacheMissSpike
+    labels:
+      alertname: DemoCacheMissSpike
+      scenario: cache-avalanche
+      severity: warning
+    fired_at: '2026-09-06T12:43:16.474Z'
+    resolved_at: '2026-09-06T12:44:16.474Z'
+  - alert_name: DemoDbPoolSaturated
+    labels:
+      alertname: DemoDbPoolSaturated
+      instance: api-gw:8000
+      job: demo-api-gw
+      scenario: slow-sql
+      severity: warning
+    fired_at: '2026-09-06T12:43:31.474Z'
+    resolved_at: '2026-09-06T12:44:01.474Z'

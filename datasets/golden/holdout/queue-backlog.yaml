@@ -1,0 +1,26 @@
+# 黄金集草稿（issue 05）——预标注初稿待人工核对，核对记录写入 issue Comments
+# 场景: 队列堆积（生产速率超过消费速率）（负载类）
+# 数据源: deploy/alerts-dump.jsonl 实测切片（fired_at/resolved_at 未编造）
+# 标注状态: DRAFT（Agent 初稿）→ 待人工抽核 → 双签回填
+
+scenario: queue-backlog
+root_cause: 探针 16 task/s 持续灌任务而 worker 消费能力约 9 task/s，Celery 队列净堆积约 7 task/s，深度越过
+  20 后持续增长；积压任务本身就是滞留 pending（实测 DemoTasksStuckPending 随之触发）；队列深度指标读 broker 所在 redis
+  db1（本次开发期修复其真实反映）
+investigation_path:
+- 查 QPS/提交速率与消费速率对比，确认净堆积方向
+- 查队列深度/连接池占用随时间曲线确认饱和点
+- 评估容量：扩容消费端或限流生产端
+remediation: 停掉压测探针，worker 以约 9/s 把积压自然消化完；扩容 worker 并发是生产上的对症手段
+runs:
+- started_at: '2026-09-06T12:29:13Z'
+  recovered_at: '2026-09-06T12:33:22Z'
+  alert_timeline:
+  - alert_name: DemoQueueDepthHigh
+    labels:
+      alertname: DemoQueueDepthHigh
+      instance: api-gw:8000
+      job: demo-api-gw
+      severity: warning
+    fired_at: '2026-09-06T12:31:26.474Z'
+    resolved_at: '2026-09-06T12:33:16.474Z'
