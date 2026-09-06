@@ -128,10 +128,10 @@ class TestGoldenSet:
             GoldenSet.model_validate(bad)
         assert "root_cause" in str(exc.value)
 
-    def test_fewer_than_three_runs_rejected(self):
-        # 设计口径：每剧本 ×3 run；少于 3 无法支撑 Top-1/Top-3 统计
+    def test_zero_runs_rejected(self):
+        # schema 层只管单文件 ≥1；"每剧本 ×3"拆分口径（dev2+holdout1）由目录树层强制
         with pytest.raises(ValidationError) as exc:
-            GoldenSet.model_validate(make_golden(n_runs=2))
+            GoldenSet.model_validate(make_golden(n_runs=0))
         assert "runs" in str(exc.value)
 
     def test_empty_alert_timeline_rejected(self):

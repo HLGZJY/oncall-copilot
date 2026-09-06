@@ -3,7 +3,8 @@
 字段契约（docs/design/m0-environment-design.md 评审落定，改动须过 decisions.md）：
 - scenario.yaml 九字段：name / fault_type / category / inject / inject_method /
   cleanup / expected_alerts / expected_root_cause / expected_remediation
-- 黄金集：scenario + runs（每剧本 ×3，设计口径）+ root_cause + investigation_path + remediation
+- 黄金集：scenario + runs（单文件 ≥1；目录树层强制 dev≥2 + holdout≥1 = 每剧本 ×3）
+  + root_cause + investigation_path + remediation
 
 设计取舍：
 - 用 pydantic 严格校验，`extra="forbid"`——多打/拼错字段名直接报错，防止脏数据流进 M7
@@ -95,7 +96,10 @@ class GoldenSet(BaseModel):
     root_cause: str = Field(min_length=1)
     investigation_path: list[str] = Field(min_length=1)
     remediation: str = Field(min_length=1)
-    runs: list[GoldenRun] = Field(min_length=3, description="设计口径：每剧本 ×3 run")
+    runs: list[GoldenRun] = Field(
+        min_length=1,
+        description="单文件 ≥1 run；每剧本 ×3 的拆分口径（dev 2 + holdout 1）由目录树校验强制",
+    )
 
 
 def golden_matches_scenario(golden: GoldenSet, spec: ScenarioSpec) -> bool:
@@ -131,3 +135,62 @@ def load_golden_set_file(path: str | Path) -> GoldenSet:
         return GoldenSet.model_validate(_load_yaml_file(p))
     except ValidationError as exc:
         raise ScenarioValidationError(f"{p}: 黄金集 schema 校验失败\n{exc}") from exc
+
+
+DEV_MIN_RUNS = 2
+HOLDOUT_MIN_RUNS = 1
+_SPLITS = ("dev", "holdout")
+
+
+def load_golden_tree(root: str | Path) -> dict[str, dict[str, GoldenSet]]:
+    """扫描 datasets/golden/{dev,holdout}/<slug>.yaml 双集目录树并校验（issue 05）。
+
+    双集隔离（architecture.md §6）：dev 调参可看，holdout 终评专用。
+    目录树层规则（schema 层只管单文件）：
+    R1 文件名（去扩展名）必须等于 golden.scenario 字段
+    R2 成对：slug 必须同时出现在 dev 与 holdout
+    R3 run 数下限：dev ≥2，holdout ≥1（每剧本 ×3 = 2+1 的拆分口径）
+    R4 防复制：同一 slug 在 dev 与 holdout 不得出现相同 started_at 的 run
+    R5 空树允许（分批采集中），已存在的文件必须合法
+
+    返回 {"dev": {slug: GoldenSet}, "holdout": {slug: GoldenSet}}。
+    """
+    base = Path(root)
+    tree: dict[str, dict[str, GoldenSet]] = {}
+    for split in _SPLITS:
+        d = base / split
+        tree[split] = {}
+        if not d.is_dir():
+            continue
+        for f in sorted(d.glob("*.yaml")):
+            golden = load_golden_set_file(f)
+            if golden.scenario != f.stem:  # R1
+                msg = f"{f}: 文件名({f.stem}) 与 scenario 字段({golden.scenario})不一致"
+                raise ScenarioValidationError(msg)
+            tree[split][f.stem] = golden
+
+    slugs = {s for split in _SPLITS for s in tree[split]}
+    for slug in sorted(slugs):
+        in_dev, in_holdout = slug in tree["dev"], slug in tree["holdout"]
+        if in_dev != in_holdout:  # R2
+            missing = "holdout" if in_dev else "dev"
+            msg = f"{slug}: 黄金集双集不成对——{missing} 目录缺少 {slug}.yaml"
+            raise ScenarioValidationError(msg)
+
+        dev_runs, holdout_runs = tree["dev"][slug].runs, tree["holdout"][slug].runs
+        if len(dev_runs) < DEV_MIN_RUNS:  # R3
+            msg = f"{slug}: dev 集仅 {len(dev_runs)} run，下限 {DEV_MIN_RUNS}（口径 dev2+holdout1）"
+            raise ScenarioValidationError(msg)
+        if len(holdout_runs) < HOLDOUT_MIN_RUNS:  # R3
+            msg = f"{slug}: holdout 集仅 {len(holdout_runs)} run，下限 {HOLDOUT_MIN_RUNS}"
+            raise ScenarioValidationError(msg)
+
+        dev_starts = {r.started_at for r in dev_runs}
+        overlap = dev_starts & {r.started_at for r in holdout_runs}
+        if overlap:  # R4
+            msg = (
+                f"{slug}: 同一 run(started_at={sorted(overlap)}) 同时出现在 dev 与 holdout"
+                "——疑似复制而非独立采集"
+            )
+            raise ScenarioValidationError(msg)
+    return tree
