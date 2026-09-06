@@ -104,6 +104,8 @@ v1 单循环；预留两个演进点但不实现：① evaluator 分离（M7 评
 ```
 scenarios      剧本: id, name, fault_type, inject_script, expected_root_cause, expected_action
 alert_events   告警: id, fingerprint, source, labels_json, fired_at, status(deduped/classified)
+                     + M1 评审增列（2026-09-06，见 design/m1-alert-ingestion-design.md G5 与 decisions.md D-13）:
+                     dedup_count, last_fired_at, resolved_at, annotations_json(原始 payload + AM fingerprint 溯源)
 incidents      事件: id, alert_ids[], severity, status(investigating/mitigated/closed), created_at
 evidence_steps 证据: id, incident_id, step_no, thought, tool, input_json, output_json,
                      output_summary, tokens, cost, latency_ms, ts        ← 100% 落库
