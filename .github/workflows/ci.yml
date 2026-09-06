@@ -1,0 +1,81 @@
+name: CI
+
+# 质量门禁流水线（quality-gates.md）：lint → type → test(断网+覆盖率) → security → eval-regression
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  PYTHON_VERSION: "3.11"   # C1: 锁定运行时（升版本须改 pyproject + 此处并写 ADR）
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -e ".[dev]"
+      - name: ruff check          # C6 函数级 / C7 日志与调试器
+        run: ruff check --output-format=github .
+      - name: ruff format
+        run: ruff format --check .
+      - name: import-linter       # C3/C4/C5 架构依赖契约
+        run: lint-imports
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -e ".[dev]"
+      - run: mypy src/ tests/     # strict 模式
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -e ".[dev]"
+      # A1: -m "not integration" + conftest 启用 pytest-socket 断网；
+      # 首个 src commit 起生效（无 src 时 pytest 依赖守卫测试自身 skip 通过）
+      - name: unit tests + coverage
+        run: pytest -m "not integration" --cov --cov-report=term-missing --cov-fail-under=80
+      - name: architecture guards  # 双保险：守卫测试独立跑一次，信号更醒目
+        run: pytest tests/test_architecture_guards.py -v
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -e ".[dev]"
+      - run: bandit -c pyproject.toml -r src/          # A6
+      - run: pip-audit --strict                         # C2: 依赖 CVE，HIGH+ 阻断
+
+  eval-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -e ".[dev]"
+      # A5: M7 落地后启用——dev 黄金集回归；
+      # Top-1 跌幅 >10% 或成本涨幅 >50% 阻断（阈值在 eval/runner 内实现）
+      - name: golden set regression
+        run: |
+          if [ -d scenarios/dev ]; then
+            python -m oncall.eval.runner --suite scenarios/dev --gate regression
+          else
+            echo "scenarios/dev 尚未建立（M0/M7），评测门禁未启用"
+          fi

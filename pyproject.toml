@@ -1,0 +1,129 @@
+[project]
+name = "oncall-copilot"
+version = "0.1.0"
+description = "Agentic SRE 值班排障智能体：告警降噪 → 多源取证 → 根因定位 → SOP 处置 → 恢复验证"
+requires-python = ">=3.11,<3.12"  # C1: 锁定运行时版本
+dependencies = [
+    # C2: 所有依赖显式版本区间，精确版本由 lockfile 固定
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.5,<3",
+    "httpx>=0.27,<1",
+    "sqlalchemy>=2.0,<3",
+    "structlog>=24.1,<26",
+    "prometheus-client>=0.21,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-cov>=5.0,<7",
+    "pytest-asyncio>=0.24,<2",
+    "pytest-socket>=0.7,<1",      # A1: 单测断网
+    "ruff>=0.6,<1",
+    "mypy>=1.11,<2",
+    "import-linter>=2.1,<3",      # C3/C4/C5: 架构依赖契约
+    "bandit>=1.7,<2",             # A6: 安全扫描
+    "pip-audit>=2.7,<3",          # C2: 依赖 CVE 扫描
+    "pre-commit>=3.8,<5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ───────────────────────── ruff（C6 函数级 / C7 日志与调试器 / 通用正确性）─────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",     # pycodestyle / pyflakes
+    "I",               # isort
+    "B",               # bugbear：常见 bug 模式
+    "UP",              # 过时语法
+    "S",               # bandit 子集：安全
+    "T20",             # C7: 禁 print / pprint
+    "T10",             # C7: 禁 breakpoint
+    "DTZ",             # 禁裸 datetime.now（时区）
+    "ASYNC",           # async 陷阱
+    "PL",              # pylint 移植：PLR0915 函数≤50语句 / PLR0913 参数≤5 / PLR0912 分支≤12
+    "RUF",
+]
+ignore = [
+    "S101",  # assert 在测试外的禁用交给 mypy/评审，业务代码禁 assert 走 review
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]                    # 测试允许 assert
+"tests/integration/**" = ["S", "T20"]    # 集成测试放宽（单独 schedule，不进 CI 默认门禁）
+
+[tool.ruff.lint.pylint]
+max-statements = 50    # C6: 函数 ≤50 语句
+max-args = 5
+max-branches = 12
+
+# ───────────────────────── mypy（类型门禁）─────────────────────────
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+
+# ───────────────────────── pytest（测试门禁）─────────────────────────
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers"
+testpaths = ["tests"]
+markers = [
+    "integration: 需真实 LLM/环境，CI 默认跳过，单独 schedule 且带 token 预算 (A1)",
+]
+
+# ───────────────────────── coverage（C9 覆盖率门禁）─────────────────────────
+[tool.coverage.run]
+source = ["src/oncall"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80          # C9: 总体 ≥80%
+show_missing = true
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+# ───────────────────────── import-linter（C3/C4/C5 架构依赖契约）─────────────────────────
+[tool.importlinter]
+root_packages = ["oncall"]
+
+[[tool.importlinter.contracts]]
+name = "C3: harness 独立于业务模块（可迁移性的物理保证）"
+type = "forbidden"
+source_modules = ["oncall.harness"]
+forbidden_modules = [
+    "oncall.ingest",
+    "oncall.classify",
+    "oncall.remediation",
+    "oncall.knowledge",
+    "oncall.eval",
+    "oncall.api",
+]
+
+[[tool.importlinter.contracts]]
+name = "C4+C5: HTTP 与 LLM SDK 只允许在 infra 收口"
+type = "forbidden"
+source_modules = ["oncall"]
+forbidden_modules = ["httpx", "requests", "openai", "anthropic"]
+ignore_imports = [
+    "oncall.infra.http -> httpx",
+    "oncall.infra.llm -> openai",
+    "oncall.infra.llm -> anthropic",
+]
+
+# ───────────────────────── bandit（A6 安全扫描）─────────────────────────
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oncall"]

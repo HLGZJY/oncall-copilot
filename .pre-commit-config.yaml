@@ -1,0 +1,22 @@
+# pre-commit 门禁（quality-gates.md C7/A6）：提交前本地拦截，CI 兜底
+# C1: 全部 rev 锁定；升级须逐个核对并提交
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff            # C7: 禁 print/breakpoint 等
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.10
+    hooks:
+      - id: bandit          # A6: 安全反模式（shell=True 等）
+        args: ["-c", "pyproject.toml"]
+        additional_dependencies: ["bandit[toml]"]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks        # A6: 硬编码密钥拦截

@@ -1,0 +1,44 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ---- 虚拟环境 ----
+.venv/
+venv/
+env/
+
+# ---- 环境变量与密钥 ----
+.env
+.env.*
+!.env.example
+
+# ---- Docker (M0 起) ----
+docker-compose.override.yml
+.dockerignore
+
+# ---- 数据与临时区 ----
+# 注意：.scratch/ **不忽略** —— 它是本仓库的 issue 追踪器，必须纳入版本控制才可追溯。
+# 约定见 docs/agents/issue-tracker.md
+data/
+*.log
+
+# ---- 操作系统 (Windows) ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---- 编辑器 / IDE ----
+.vscode/
+.idea/
+*.swp
