@@ -1,0 +1,89 @@
+# demo 业务系统告警规则（issue 03，共 6 条，对应 m0-execution 8 类剧本的 W1 子集）
+# 纪律：每条规则的 scenario label = 剧本 slug，与 chaos/scenarios/*/scenario.yaml
+# 的 expected_alerts 双向对应——剧本必须至少触发一条规则，规则必须有剧本可解释。
+groups:
+  - name: demo-slo
+    rules:
+      # ── 剧本 01-cpu-spike：CPU 飙高（Pumba cpu stress 打满 api-gw 单核）──────────
+      # 机制：事件循环/线程池被饿死，非 DB 路径（/health /metrics）延迟最先失控，
+      # 排除 /tasks 保证与慢 SQL 剧本的正交性；/health 走独立连接池
+      # （demo/common/db.py health_engine），池饱和不会连带本规则误报。
+      # 阈值 0.05s：健康负载下 P95≈5ms（10 倍裕度），CPU 饥饿 + 探针负载下 P95≈95ms。
+      # 注意该直方图是服务端计时，TCP/探针侧排队不计入——叠加业务流量是必要条件，
+      # 且阈值必须落在"饥饿后服务内延迟"区间，而非靠堆流量把延迟顶过任意阈值。
+      - alert: DemoApiGwHighLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(demo_request_duration_seconds_bucket{endpoint!="/tasks"}[1m]))
+          ) > 0.05
+        for: 1m
+        labels:
+          severity: warning
+          scenario: cpu-spike
+        annotations:
+          summary: "api-gw 非 DB 路径 P95 延迟超过 0.5s"
+          description: "疑似 CPU 资源被占用导致事件循环饥饿（对应剧本 chaos/scenarios/01-cpu-spike）"
+
+      # ── 剧本 02-slow-sql：tasks 表锁等待 ────────────────────────────────────────
+      # 机制：写锁持有期间 /tasks 读写全部阻塞。两个表现择一触发即可：
+      #   a) 已完成请求的 P95 直冲直方图顶格（注意：全落 +Inf 桶时 quantile 为 NaN，
+      #      NaN 比较恒假，必须配 b 支路兜底）；
+      #   b) 连接池（5+5）打满后新请求 30s 超时产生 5xx 流量。
+      - alert: DemoTasksHighLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(demo_request_duration_seconds_bucket{endpoint="/tasks"}[1m]))
+          ) > 0.5
+          or
+          sum(rate(demo_requests_total{endpoint="/tasks",status=~"5.."}[2m])) > 0.02
+        for: 1m
+        labels:
+          severity: warning
+          scenario: slow-sql
+        annotations:
+          summary: "api-gw /tasks 路径 P95 延迟超过 0.5s"
+          description: "疑似 DB 慢查询/锁等待（对应剧本 chaos/scenarios/02-slow-sql）"
+
+      # 慢 SQL 的伴随信号：被阻塞的请求把 SQLAlchemy 连接池（5+5）打满
+      - alert: DemoDbPoolSaturated
+        expr: demo_db_pool_used >= demo_db_pool_size
+        for: 30s
+        labels:
+          severity: warning
+          scenario: slow-sql
+        annotations:
+          summary: "DB 连接池已打满（used >= size）"
+          description: "连接被慢 SQL/锁等待长期占用，新请求将超时失败"
+
+      # ── 通用规则（为 T4 后续剧本预留：负载类/故障类/网络类）───────────────────
+      - alert: DemoHighErrorRate
+        expr: |
+          sum(rate(demo_requests_total{status=~"5.."}[2m]))
+            / sum(rate(demo_requests_total[2m])) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "api-gw 5xx 错误率超过 10%"
+          description: "连接池打满/依赖故障导致大面积请求失败"
+
+      - alert: DemoQueueDepthHigh
+        expr: demo_queue_depth > 20
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Celery 队列堆积超过 20 个任务"
+          description: "worker 消费能力不足或被打挂（负载类/故障类剧本）"
+
+      # for 拉长到 2m：CPU 飙高导致 /metrics 抓取偶发超时（up 短暂抖动）不应误报
+      - alert: DemoApiGwDown
+        expr: up{job="demo-api-gw"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "api-gw 抓取目标失联"
+          description: "Prometheus 连续 2 分钟抓不到 /metrics，服务疑似挂死"

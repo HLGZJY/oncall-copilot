@@ -1,0 +1,18 @@
+# Alertmanager 最简配置（issue 03）：全部告警走 webhook 落 JSONL
+# M1 时把 receiver 换成 oncall ingest 端点，其余路由结构保留。
+global:
+  resolve_timeout: 1m
+
+route:
+  receiver: dump
+  group_by: ["alertname"]
+  group_wait: 5s
+  group_interval: 10s
+  repeat_interval: 2h
+
+receivers:
+  - name: dump
+    webhook_configs:
+      # alert-dumper 把每次回调追加写 deploy/alerts-dump.jsonl（含 firing 与 resolved）
+      - url: http://alert-dumper:9000/alerts
+        send_resolved: true

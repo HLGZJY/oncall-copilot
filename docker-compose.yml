@@ -97,5 +97,31 @@ services:
     depends_on:
       - loki
 
+  # ── 告警链路（issue 03）：Prometheus 规则评估 → Alertmanager → webhook 落 JSONL ──
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    volumes:
+      - ./deploy/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    volumes:
+      - ./deploy/alertmanager:/etc/alertmanager:ro
+    ports:
+      - "127.0.0.1:9093:9093"
+
+  alert-dumper:
+    build:
+      context: ./deploy/alert-dumper
+    environment:
+      DUMP_PATH: /alerts/alerts-dump.jsonl
+    volumes:
+      # 追加写宿主 deploy/alerts-dump.jsonl（运行时产物，已 gitignore）
+      - ./deploy:/alerts
+
 volumes:
   mysql-data:
+  prometheus-data:

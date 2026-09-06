@@ -29,6 +29,8 @@ docker-compose.override.yml
 # ---- 数据与临时区 ----
 # 注意：.scratch/ **不忽略** —— 它是本仓库的 issue 追踪器，必须纳入版本控制才可追溯。
 # 约定见 docs/agents/issue-tracker.md
+# 告警 webhook 落盘是运行时产物（alert-dumper 容器追加写），不入库
+deploy/alerts-dump.jsonl
 data/
 *.log
 

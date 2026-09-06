@@ -1,0 +1,26 @@
+# Prometheus 抓取与告警评估配置（issue 03 / 设计 T3）
+# 告警规则与剧本一一对应（D-12 评审决策 3）：rules.yml 里每条规则的 scenario label
+# 即 chaos/scenarios/<slug>/scenario.yaml 的 expected_alerts 物理映射，防哑剧本。
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  # 告警在 Alertmanager 侧无新报时标记 resolved 的等待时间
+  scrape_timeout: 4s
+
+rule_files:
+  - /etc/prometheus/rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  # demo 业务系统四类指标（demo_ 前缀）+ process_* 指标
+  - job_name: demo-api-gw
+    static_configs:
+      - targets: ["api-gw:8000"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
