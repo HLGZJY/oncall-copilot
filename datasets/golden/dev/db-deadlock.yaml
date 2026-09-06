@@ -1,0 +1,65 @@
+# 黄金集草稿（issue 05）——预标注初稿待人工核对，核对记录写入 issue Comments
+# 场景: 数据库死锁（双事务锁环 + 死锁检测被关闭）（业务类）
+# 数据源: deploy/alerts-dump.jsonl 实测切片（fired_at/resolved_at 未编造）
+# 标注状态: DRAFT（Agent 初稿）→ 待人工抽核 → 双签回填
+
+scenario: db-deadlock
+root_cause: 两个事务分别持有第 1 行与末行+supremum next-key 锁并互相申请对方持有物，innodb_deadlock_detect
+  被关闭导致锁环无法自动解开；supremum 锁阻塞一切 INSERT，POST /tasks 全部挂起直至连接池超时
+investigation_path:
+- 查 /tasks P95、连接池占用与 5xx 率定位到 DB 路径
+- 查 MySQL processlist/data_locks 看持锁与等待会话
+- 确认锁类型（表锁/行锁/死锁环）与全局变量是否被改动
+remediation: KILL 两个死锁会话（事务回滚释放锁），恢复 innodb_deadlock_detect=ON，等在途请求排空后延迟/连接池/错误率回落（实测三条告警全部触发；首轮实测曾因
+  /metrics 依赖主连接池导致 DemoApiGwDown 误触发——已用专用短超时引擎 metrics_engine 修复观测正交性）
+runs:
+- started_at: '2026-09-06T11:34:48Z'
+  recovered_at: '2026-09-06T11:39:43Z'
+  alert_timeline:
+  - alert_name: DemoDbPoolSaturated
+    labels:
+      alertname: DemoDbPoolSaturated
+      instance: api-gw:8000
+      job: demo-api-gw
+      scenario: slow-sql
+      severity: warning
+    fired_at: '2026-09-06T11:36:26.474Z'
+    resolved_at: '2026-09-06T11:38:11.474Z'
+  - alert_name: DemoTasksHighLatency
+    labels:
+      alertname: DemoTasksHighLatency
+      scenario: slow-sql
+      severity: warning
+    fired_at: '2026-09-06T11:36:36.474Z'
+    resolved_at: '2026-09-06T11:39:31.474Z'
+  - alert_name: DemoHighErrorRate
+    labels:
+      alertname: DemoHighErrorRate
+      severity: critical
+    fired_at: '2026-09-06T11:37:56.474Z'
+    resolved_at: '2026-09-06T11:39:31.474Z'
+- started_at: '2026-09-06T11:42:01Z'
+  recovered_at: '2026-09-06T11:46:55Z'
+  alert_timeline:
+  - alert_name: DemoDbPoolSaturated
+    labels:
+      alertname: DemoDbPoolSaturated
+      instance: api-gw:8000
+      job: demo-api-gw
+      scenario: slow-sql
+      severity: warning
+    fired_at: '2026-09-06T11:43:36.474Z'
+    resolved_at: '2026-09-06T11:45:21.474Z'
+  - alert_name: DemoTasksHighLatency
+    labels:
+      alertname: DemoTasksHighLatency
+      scenario: slow-sql
+      severity: warning
+    fired_at: '2026-09-06T11:43:46.474Z'
+    resolved_at: '2026-09-06T11:46:41.474Z'
+  - alert_name: DemoHighErrorRate
+    labels:
+      alertname: DemoHighErrorRate
+      severity: critical
+    fired_at: '2026-09-06T11:45:06.474Z'
+    resolved_at: '2026-09-06T11:46:41.474Z'

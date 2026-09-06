@@ -1,0 +1,39 @@
+# 黄金集草稿（issue 05）——预标注初稿待人工核对，核对记录写入 issue Comments
+# 场景: 版本协议不兼容（旧消息被新协议要求静默跳过）（业务语义层）
+# 数据源: deploy/alerts-dump.jsonl 实测切片（fired_at/resolved_at 未编造）
+# 标注状态: DRAFT（Agent 初稿）→ 待人工抽核 → 双签回填
+
+scenario: protocol-mismatch
+root_cause: redis 门禁 chaos:min_protocol 被抬到 v2 而 api-gw 消息仍是 v1，worker 正常消费消息但判定协议过旧直接跳过（error
+  日志、不重新入队）——无 5xx、无资源异常、队列正常排空，唯一信号是任务滞留 pending 超 60s 的业务指标
+investigation_path:
+- 确认资源指标全绿、无 5xx——排除基础设施层
+- 查业务指标（滞留任务）与 worker 日志找语义层异常
+- 比对生产端/消费端版本约定（协议门禁/消息版本）
+remediation: 撤销协议门禁恢复新任务处理，并将滞留任务补偿为 failed 终态（实测补偿 145 条；消息重放属 M1 ingest 范畴）；告警依赖业务指标
+  DemoTasksStuckPending 而非资源指标——实测 firing 期间无 5xx、队列正常排空，语义层特征完整
+runs:
+- started_at: '2026-09-06T10:29:00Z'
+  recovered_at: '2026-09-06T10:33:00Z'
+  alert_timeline:
+  - alert_name: DemoTasksStuckPending
+    labels:
+      alertname: DemoTasksStuckPending
+      instance: api-gw:8000
+      job: demo-api-gw
+      scenario: protocol-mismatch
+      severity: critical
+    fired_at: '2026-09-06T10:32:26.474Z'
+    resolved_at: '2026-09-06T10:32:51.474Z'
+- started_at: '2026-09-06T10:35:11Z'
+  recovered_at: '2026-09-06T10:39:10Z'
+  alert_timeline:
+  - alert_name: DemoTasksStuckPending
+    labels:
+      alertname: DemoTasksStuckPending
+      instance: api-gw:8000
+      job: demo-api-gw
+      scenario: protocol-mismatch
+      severity: critical
+    fired_at: '2026-09-06T10:38:36.474Z'
+    resolved_at: '2026-09-06T10:39:01.474Z'

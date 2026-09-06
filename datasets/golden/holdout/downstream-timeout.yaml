@@ -1,0 +1,41 @@
+# 黄金集草稿（issue 05）——预标注初稿待人工核对，核对记录写入 issue Comments
+# 场景: 下游超时（api-gw 到 MySQL 流量被注入延迟）（网络类）
+# 数据源: deploy/alerts-dump.jsonl 实测切片（fired_at/resolved_at 未编造）
+# 标注状态: DRAFT（Agent 初稿）→ 待人工抽核 → 双签回填
+
+scenario: downstream-timeout
+root_cause: Pumba netem 对 api-gw 出方向全部流量注入 700ms 固定延迟（实测：Docker Desktop/WSL2 上端口过滤不生效，3s
+  全流量延迟会把抓取响应拖过 4s 超时导致 DemoApiGwDown 误触发、告警失明，700ms 为保住观测面的实测权衡），/tasks P95 越过 0.5s、连接池被占满；DB
+  变慢连带消费速率下降（队列堆积/任务滞留级联）与非 DB 路径延迟抬升，5 条告警全部实测触发
+investigation_path:
+- 查 /tasks P95 与 5xx 率确认延迟形态（恒定抬升 vs 尾部尖刺）
+- 对比 api-gw 与 mysql 间网络指标/重传，区分延迟与丢包
+- docker exec 进 api-gw 查 tc qdisc 确认 netem 注入
+remediation: 停止 Pumba（SIGTERM 触发 tc qdisc 撤销）与探针，等在途请求排空后 /tasks 延迟与连接池占用回落（实测清理后全部告警恢复）
+runs:
+- started_at: '2026-09-06T11:13:48Z'
+  recovered_at: '2026-09-06T11:16:28Z'
+  alert_timeline:
+  - alert_name: DemoTasksHighLatency
+    labels:
+      alertname: DemoTasksHighLatency
+      scenario: slow-sql
+      severity: warning
+    fired_at: '2026-09-06T11:15:01.474Z'
+    resolved_at: '2026-09-06T11:16:11.474Z'
+  - alert_name: DemoApiGwHighLatency
+    labels:
+      alertname: DemoApiGwHighLatency
+      scenario: cpu-spike
+      severity: warning
+    fired_at: '2026-09-06T11:15:11.474Z'
+    resolved_at: null
+  - alert_name: DemoDbPoolSaturated
+    labels:
+      alertname: DemoDbPoolSaturated
+      instance: api-gw:8000
+      job: demo-api-gw
+      scenario: slow-sql
+      severity: warning
+    fired_at: '2026-09-06T11:15:31.474Z'
+    resolved_at: '2026-09-06T11:15:51.474Z'
