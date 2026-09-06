@@ -1,0 +1,55 @@
+"""SQLAlchemy ORM 模型（当前仅 alert_events，其余五表属 M2–M7 不越界）。"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import JSON, CheckConstraint, DateTime, Integer, String
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, validates
+
+
+class Base(DeclarativeBase):
+    """全项目共用 declarative base（M2+ 建表沿用，便于 create_all/Alembic 统一元数据）。"""
+
+
+class AlertEvent(Base):
+    """一条归一化告警：M1 指纹去重后落库，M2 消费（status: deduped → classified）。
+
+    字段契约 = 架构 §4 冻结列 + D-13 M1 增列
+    （docs/architecture/architecture.md §4、docs/design/decisions.md D-13）。
+    字段一旦被 M2+ 引用难以改名，改动须过 decisions.md 评审。
+    """
+
+    __tablename__ = "alert_events"
+    __table_args__ = (
+        # 架构 §4 冻结 status 取值；CHECK 落 DB 层而非应用层，脏数据进不来
+        CheckConstraint("status IN ('deduped', 'classified')", name="ck_alert_events_status"),
+    )
+
+    # ── 架构 §4 冻结列 ──
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 指纹 = canonical 稳定 label 子集 sha256 hex（G1，计算逻辑在 T3 应用层）；
+    # 唯一约束即去重锚点：同指纹重复 firing 走行内合并（G2）而非新增行
+    fingerprint: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    labels_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    fired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="deduped")
+
+    # ── D-13 M1 增列 ──
+    # 首次 firing 计 1，窗口内重复由应用层 ++（M7 降噪统计分母）
+    dedup_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # 每次重复 firing 前移；首次落库由 fired_at 回填
+    last_fired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # 原始告警 annotations + Alertmanager 自带 fingerprint（全 labels FNV-1a，易变，
+    # 不作主指纹，仅交叉溯源，见 G5/D-13）
+    annotations_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+
+    @validates("fired_at")
+    def _backfill_last_fired(self, key: str, value: datetime) -> datetime:
+        """首次落库 last_fired_at == fired_at；显式传入值不覆盖。"""
+        if self.last_fired_at is None:
+            self.last_fired_at = value
+        return value
