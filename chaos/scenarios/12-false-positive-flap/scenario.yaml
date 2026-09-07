@@ -1,0 +1,14 @@
+name: false-positive-flap
+fault_type: 告警规则阈值配置漂移（无真实业务故障，规则在正常水位误触发）
+category: 误报类
+inject: chaos/scenarios/12-false-positive-flap/inject.sh
+inject_method: custom-script
+cleanup: chaos/scenarios/12-false-positive-flap/cleanup.sh
+expected_alerts:
+  - DemoTasksLatencyFlap
+expected_root_cause: 误报专属规则 DemoTasksLatencyFlap 的延迟阈值被临时下调（0.12s→0.01s，配置漂移），而 /tasks P95 正常水位实测稳定在 ~25ms（轻载 ~2/s 探针，4.9 倍裕度默认不触发），下调后正常水位持续越限 1m 触发告警——无任何真实业务故障，指标/日志/业务面全部正常，是规则配置错了而不是系统错了
+expected_investigation_path:
+  - 查告警规则当前阈值配置与规则文件变更记录（inject 直接产生的首个可独立观测信号：DemoTasksLatencyFlap 阈值 0.12s→0.01s 的配置差异）
+  - 对比业务指标真实水位确认正常（/tasks P95 ~25ms、无 5xx、队列正常排空、worker 消费正常），排除真实故障
+  - 恢复规则默认阈值 0.12s 并 reload Prometheus，验证告警 resolved
+expected_remediation: 将 DemoTasksLatencyFlap 阈值从漂移值 0.01s 恢复为默认 0.12s 并 reload（cleanup 实测恢复后告警 resolved）；误报处置 = 修正规则配置而非动系统——业务侧本无故障，对服务/DB 的任何"处置"都是误动作，这正是误报剧本要守住的反面教材

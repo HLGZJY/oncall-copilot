@@ -1,4 +1,4 @@
-# demo 业务系统告警规则（issue 03 起步 6 条，issue 04 补至 8 条，对应 11 个剧本）
+# demo 业务系统告警规则（issue 03 起步 6 条，issue 04 补至 8 条，issue 06 补第 9 条，对应 12 个剧本）
 # 纪律：每条规则的 scenario label = 剧本 slug，与 chaos/scenarios/*/scenario.yaml
 # 的 expected_alerts 双向对应——剧本必须至少触发一条规则，规则必须有剧本可解释。
 groups:
@@ -119,3 +119,25 @@ groups:
         annotations:
           summary: "大量任务滞留 pending 超 60 秒（业务停摆，指标层无异常）"
           description: "疑似 worker 与消息协议版本不兼容，任务被消费但未处理（对应剧本 chaos/scenarios/11-protocol-mismatch）"
+
+      # ── 剧本 12-false-positive-flap：规则阈值配置漂移型误报（D-21 / issue 06）────
+      # 误报专属规则：默认阈值 0.12s 高于 /tasks P95 正常水位（轻载 ~2/s 探针实测
+      # 稳定在 ~25ms，4.9 倍裕度），健康状态永不触发；剧本 inject 临时把阈值下调到
+      # 0.01s（基线之下 2.5 倍），同一指标正常水位即持续越限 → 真实 Prometheus 评估
+      # 链路产生的误报（非伪造 webhook payload）。阈值取 0.12 而非 0.1：避开
+      # DemoHighErrorRate 已用的 0.1，保证 inject/cleanup 的 sed 替换唯一命中。
+      # 注意与 slow-sql 的 DemoTasksHighLatency 正交：本规则阈值远低于其 0.5s，
+      # 误报期间慢 SQL 规则不受影响。
+      - alert: DemoTasksLatencyFlap
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(demo_request_duration_seconds_bucket{endpoint="/tasks"}[1m]))
+          ) > 0.12
+        for: 1m
+        labels:
+          severity: warning
+          scenario: false-positive-flap
+        annotations:
+          summary: "/tasks P95 延迟超过 120ms（误报剧本专属规则，默认阈值正常水位不触发）"
+          description: "疑似规则阈值配置漂移——先确认指标真实水位与规则变更记录，勿动系统（对应剧本 chaos/scenarios/12-false-positive-flap）"

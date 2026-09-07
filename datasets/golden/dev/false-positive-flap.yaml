@@ -1,0 +1,39 @@
+# 黄金集（issue 06 / D-21）——误报剧本：无真实业务故障，规则阈值配置漂移型误报
+# 场景: 告警规则阈值配置漂移（无真实业务故障，规则在正常水位误触发）（误报类）
+# 数据源: deploy/alerts-dump.jsonl 实测切片（datasets/golden/_raw/false-positive-flap-r{1,2}.jsonl，
+#   collect_run.sh 采集，fired_at/resolved_at 未编造）。轻载 ~2/s 探针下系统健康
+#   （/tasks P95 ~25ms、stale_pending=0、无其他告警 firing），唯一 firing 即被
+#   inject 调错阈值的 DemoTasksLatencyFlap（0.12s→0.01s）
+# 标注状态: DRAFT（Agent 初稿）→ 待人工抽核 → 双签回填
+# classification: false_positive（D-21 误报标注——「0 漏报」另一半「能识别假告警」的判分依据）
+
+scenario: false-positive-flap
+root_cause: 误报专属规则 DemoTasksLatencyFlap 的延迟阈值被临时下调（0.12s→0.01s，配置漂移），而 /tasks P95 正常水位实测稳定在 ~25ms（轻载 ~2/s 探针，4.9 倍裕度默认不触发），下调后正常水位持续越限 1m 触发告警——无任何真实业务故障，指标/日志/业务面全部正常，是规则配置错了而不是系统错了
+investigation_path:
+- 查告警规则当前阈值配置与规则文件变更记录（inject 直接产生的首个可独立观测信号：DemoTasksLatencyFlap 阈值 0.12s→0.01s 的配置差异）
+- 对比业务指标真实水位确认正常（/tasks P95 ~25ms、无 5xx、队列正常排空、worker 消费正常），排除真实故障
+- 恢复规则默认阈值 0.12s 并 reload Prometheus，验证告警 resolved
+remediation: 将 DemoTasksLatencyFlap 阈值从漂移值 0.01s 恢复为默认 0.12s 并 reload（cleanup 实测恢复后告警 resolved）；误报处置 = 修正规则配置而非动系统——业务侧本无故障，对服务/DB 的任何"处置"都是误动作，这正是误报剧本要守住的反面教材
+runs:
+- started_at: '2026-09-07T10:27:29Z'
+  recovered_at: '2026-09-07T10:29:02Z'
+  alert_timeline:
+  - alert_name: DemoTasksLatencyFlap
+    labels:
+      alertname: DemoTasksLatencyFlap
+      scenario: false-positive-flap
+      severity: warning
+    fired_at: '2026-09-07T10:28:36.474Z'
+    resolved_at: '2026-09-07T10:28:51.474Z'
+    classification: false_positive
+- started_at: '2026-09-07T10:29:28Z'
+  recovered_at: '2026-09-07T10:31:02Z'
+  alert_timeline:
+  - alert_name: DemoTasksLatencyFlap
+    labels:
+      alertname: DemoTasksLatencyFlap
+      scenario: false-positive-flap
+      severity: warning
+    fired_at: '2026-09-07T10:30:36.474Z'
+    resolved_at: '2026-09-07T10:30:51.474Z'
+    classification: false_positive
