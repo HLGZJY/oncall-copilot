@@ -30,6 +30,6 @@ Alertmanager receiver 从「写 `alerts-dump.jsonl`」升级为 oncall `POST /in
 ## 状态
 
 - [x] 设计评审通过（2026-09-06，G1–G7 定案，依据 R1–R5）
-- [ ] Phase A：01–03（接入 + 归一化 + 指纹去重，可并行于 M0-05/06 收尾，不切 receiver）
-- [ ] Phase B：04–05（上下文与卡片）
-- [ ] Phase C：06（receiver 切换须 M0-05 resolved；端到端演练 + 实测回填设计文档验收节，翻 `implemented`）
+- [x] Phase A：01–03（接入 + 归一化 + 指纹去重，可并行于 M0-05/06 收尾，不切 receiver）
+- [x] Phase B：04–05（上下文与卡片）
+- [x] Phase C：06（receiver 切换须 M0-05 resolved；端到端演练 + 实测回填设计文档验收节，翻 `implemented`）——2026-09-07 完成：三档 env 开关（dump / dual / oncall）+ oncall 收编 compose；02-slow-sql ×3 演练 `dedup_count=3` + 卡片三源 + 回退演练实录回填；设计文档 status 翻 `implemented`。**M1 全部六票 resolved，收尾。**

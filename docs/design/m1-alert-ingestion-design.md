@@ -2,8 +2,8 @@
 title: "M1 告警接入与归一化：设计与开发计划"
 summary: "Alertmanager webhook 接入（/ingest）、告警指纹去重合并、上下文拉取三源、alert_events 表、T1–T6 任务拆解与验收口径"
 source: docs/plans/m1-execution.md + docs/prd.md §7-M1 + docs/architecture/architecture.md §2/§4/§5 + docs/design/feature-design-template.md + 评审标准来源（见 §7 末「评审依据」）
-status: reviewed
-updated: 2026-09-06
+status: implemented
+updated: 2026-09-07
 read_when: 评审 M1 方案时；进入 M1 开发前；被问「M1 告警接入怎么做」时
 ---
 
@@ -13,7 +13,7 @@ read_when: 评审 M1 方案时；进入 M1 开发前；被问「M1 告警接入�
 
 `draft`（草案，讨论中）→ `reviewed`（评审通过，可开工）→ `implemented`（已落地，实测数据已回填）→ `superseded`（被后续设计取代，注明替代文档链接）
 
-- **当前状态**：`reviewed`（2026-09-06 评审通过：§7 G1–G7 全部定案，依据 GitHub 官方标准来源，见 §7 末「评审依据」；D-13 已入 `decisions.md`；增列已回写架构文档 §4）
+- **当前状态**：`implemented`（2026-09-07 六票全部 resolved、验收节逐条实测回填完毕；评审基础：2026-09-06 G1–G7 定案，依据 GitHub 官方标准来源，见 §7 末「评审依据」；D-13 已入 `decisions.md`；增列已回写架构文档 §4）
 - **评审人 / 评审日期**：用户授权 AI 执行评审（检索 GitHub 标准逐条比对），2026-09-06；如有异议可推翻定案并回退 `draft`
 - **关联 issue**：`.scratch/m1-alert-ingestion/`（spec.md + issues/01–06，与 T1–T6 一一对应）
 
@@ -98,18 +98,45 @@ read_when: 评审 M1 方案时；进入 M1 开发前；被问「M1 告警接入�
 
 > 可实测、可判定；实测后回填打勾，不得虚构。M1 不含降噪率口径（≥80%/0 漏报在 M2 统一验收）。
 
-- [ ] `/ingest` 接入真实 Alertmanager 通知：同故障 3 连发 → 归一化为 1 条 `alert_events`（`dedup_count=3`），**0 漏收**（每次 firing 都被计入合并，resolved 状态联动正确）
-- [ ] `/ingest` 幂等：同一 webhook payload 原样重放 3 次 → 仍归一化为 1 条，`dedup_count` 不变（依据 Alertmanager 对非 2xx 响应做指数退避重试的投递语义，见 §7 评审依据 R1/R3）
-- [ ] 批量 payload：单次 webhook 含多条 `alerts[]`（v4 契约为数组 + `truncatedAlerts` 截断字段，见评审依据 R1）→ 逐条归一化落库，不假设单条
+- [x] `/ingest` 接入真实 Alertmanager 通知：同故障 3 连发 → 归一化为 1 条 `alert_events`（`dedup_count=3`），**0 漏收**（每次 firing 都被计入合并，resolved 状态联动正确）
+  实测（2026-09-07，issue 06 演练，dual 档真实 AM）：02-slow-sql ×3 注入循环 →
+  DemoTasksHighLatency / DemoApiGwHighLatency / DemoDbPoolSaturated 各 3 次 firing
+  合并 1 条 `dedup_count=3`（`alert_events` id 3/4/5）；0 漏收（第 4 类
+  DemoHighErrorRate 迟触发亦计入，id 6）；resolved 联动正确（resolved_at 落库，
+  窗内再触发重新打开）。
+- [x] `/ingest` 幂等：同一 webhook payload 原样重放 3 次 → 仍归一化为 1 条，`dedup_count` 不变（依据 Alertmanager 对非 2xx 响应做指数退避重试的投递语义，见 §7 评审依据 R1/R3）
+  实测（2026-09-07，issue 03）：原样重放 2 次 + 单测重放 3 次 → 计数不变；
+  已合并 3 连发的行再重放末次 firing 仍为 3。详见 issue 03 回填。
+- [x] 批量 payload：单次 webhook 含多条 `alerts[]`（v4 契约为数组 + `truncatedAlerts` 截断字段，见评审依据 R1）→ 逐条归一化落库，不假设单条
+  实测（2026-09-06，issue 02）：单测批量用例 + payload 内自重复判重用例绿；
+  dump 无真实多 alert 行，批量语义由单测覆盖。详见 issue 02 回填。
 - [x] 事件卡片：经 `GET /alerts/{id}/context` 可取回「告警本体 + 近期指标（近 N 分钟序列）+ 服务拓扑 + 近期变更（可为空）」JSON，字段齐全
   实测（2026-09-07，issue 05）：oncall.db 合并告警 #2 → 200，本体 13 键（D-17 契约）+
   三源齐全（metrics 3 series / topology 2 targets / changes 占位空）；Prometheus 停止时
   metrics/topology 显式 `unavailable`，卡片仍 200。另落地 `GET /alerts` 列表
   （分页 + fingerprint 过滤）。详见 `.scratch/m1-alert-ingestion/issues/05-…md` 回填。
-- [ ] receiver 切换：双写开关生效（dump 可关可开），关闭 dump 后 ingest 不受影响；切换时点避开 M0-05 黄金集采集
-- [ ] 单元测试覆盖约定接缝：指纹纯函数（canonical 稳定性）、归一化映射、时间窗边界；全量 pytest 通过（coverage ≥80% 维持，只算 `src/oncall`）
-- [ ] 端到端演练 1 个剧本：注入 → 多告警 → 合并 1 条 → 卡片带上下文，实录（告警名/时间线/dedup_count）回填本节
-- [ ] 术语与边界核对：全文措辞与 `CONTEXT.md` 一致；新术语（如「归一化」「事件卡片载体」）登记建议随评审处理，不擅自造词
+- [x] receiver 切换：双写开关生效（dump 可关可开），关闭 dump 后 ingest 不受影响；切换时点避开 M0-05 黄金集采集
+  实测（2026-09-07，issue 06）：三档 env 开关（`ONCALL_AM_CONFIG` 插值挂载）——
+  ① dual 档：dump 232→235 行与 DB id 3–6 同步落（对比两侧记录数一致）；② dump 回退档：
+  注入后 dump 256→259、DB 纹丝不动，collect_run.sh 依赖面（dump + Prom API + 注入脚本）
+  完好；③ oncall 档：DB 新增 id 7–10（firing+resolved 联动），dump 侧 259→264 的
+  5 行均为**切档前**迟到通知（DemoHighErrorRate 02:17:56 迟触发 + 4 条 resolved，
+  endsAt ≤02:19:06 < 切档 02:19:15），无串档。切换时点：M0-05 采集已完毕、仅剩人工
+  抽核与切换并行（用户拍板放行），双写窗口 dump 行为与现状一致。
+- [x] 单元测试覆盖约定接缝：指纹纯函数（canonical 稳定性）、归一化映射、时间窗边界；全量 pytest 通过（coverage ≥80% 维持，只算 `src/oncall`）
+  实测（2026-09-07，issue 06 收尾）：pytest 147 用例（143 passed + 4 skipped
+  integration），coverage 95.89%；ruff check + ruff format --check 全绿。
+- [x] 端到端演练 1 个剧本：注入 → 多告警 → 合并 1 条 → 卡片带上下文，实录（告警名/时间线/dedup_count）回填本节
+  实测（2026-09-07，issue 06）：02-slow-sql（tasks 写锁 240s ×3 循环，注入
+  10:00:12 / 10:05:37 / 10:09:35 本地）→ 每循环 3–4 类告警 firing（DemoTasksHighLatency
+  10:02:27 / 10:07:21 / 10:11:13）→ `dedup_count=3`（id 3/4/5）→
+  `GET /alerts/5/context` 卡片：alert 本体 13 键（D-17）+ 三源齐全（metrics 3 series /
+  topology 2 targets / changes 占位空，容器网内 `ONCALL_PROMETHEUS_URL=http://prometheus:9090`）。
+  附带实测验证 D-14 桶边界行为：02:20+ 的下一次 firing（跨两桶）开新行 id 7–10，
+  与「超窗新行、保守不漏收」设计一致。
+- [x] 术语与边界核对：全文措辞与 `CONTEXT.md` 一致；新术语（如「归一化」「事件卡片载体」）登记建议随评审处理，不擅自造词
+  核对（2026-09-07，issue 06 收尾）：全文用词与 CONTEXT.md 一致（事件卡片 / Alert Card
+  ≠ 事件 / Incident；恢复验证 / Recovery Verification 仅指四道闸门）；无新造词。
 
 ## 依赖
 
