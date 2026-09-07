@@ -1,0 +1,19 @@
+# Alertmanager receiver · oncall 档（M1 issue 06 终态）：仅 oncall /ingest，dump 关闭
+# 前置：dual 档双写过渡验证通过、M0-05 黄金集采集完毕。回退：切回 dump 档即可。
+# 切换：ONCALL_AM_CONFIG=alertmanager-oncall.yml docker-compose up -d alertmanager
+global:
+  resolve_timeout: 1m
+
+route:
+  receiver: oncall
+  group_by: ["alertname"]
+  group_wait: 5s
+  group_interval: 10s
+  repeat_interval: 2h
+
+receivers:
+  - name: oncall
+    webhook_configs:
+      # oncall ingest：Pydantic 校验 → 归一化 → 指纹去重合并落 alert_events
+      - url: http://oncall:8010/ingest
+        send_resolved: true

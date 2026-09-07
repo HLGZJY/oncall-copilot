@@ -1,5 +1,7 @@
-# Alertmanager 最简配置（issue 03）：全部告警走 webhook 落 JSONL
-# M1 时把 receiver 换成 oncall ingest 端点，其余路由结构保留。
+# Alertmanager receiver · dump 档（M0-03 现状 / issue 06 回退档）：全部告警走 webhook 落 JSONL
+# 三档开关见 docker-compose.yml alertmanager 服务注释：
+#   dump（本文件，默认）→ dual（双写过渡）→ oncall（切稳后）；回退 = 切回本档
+# M1 收编 oncall 后本档保留，黄金集采集工具 collect_run.sh 依赖 dump 链路。
 global:
   resolve_timeout: 1m
 

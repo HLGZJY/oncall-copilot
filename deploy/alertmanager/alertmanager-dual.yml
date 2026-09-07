@@ -1,0 +1,23 @@
+# Alertmanager receiver · dual 档（M1 issue 06 / G6 双写过渡）：dump 与 oncall 同写
+# 用途：receiver 切换过渡窗口——dump 行为与现状完全一致（黄金集采集链路不变），
+#       oncall /ingest 同步落 alert_events（幂等，D-13）；切稳后切 oncall 档关 dump。
+# 切换：ONCALL_AM_CONFIG=alertmanager-dual.yml docker-compose up -d alertmanager
+global:
+  resolve_timeout: 1m
+
+route:
+  receiver: dual
+  group_by: ["alertname"]
+  group_wait: 5s
+  group_interval: 10s
+  repeat_interval: 2h
+
+receivers:
+  - name: dual
+    webhook_configs:
+      # 与 dump 档完全一致（双写窗口内 dump 行为不得改变）
+      - url: http://alert-dumper:9000/alerts
+        send_resolved: true
+      # oncall ingest：Pydantic 校验 → 归一化 → 指纹去重合并落 alert_events
+      - url: http://oncall:8010/ingest
+        send_resolved: true
