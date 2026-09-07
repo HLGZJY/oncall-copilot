@@ -8,6 +8,8 @@
   —— LLM 通道接缝（client.py，真实 client 留 issue 03/07 接）
 - `RuleVerdict` / `Rule` / `DEFAULT_RULES` / `run_rule_channel` 等
   —— 规则通道谓词注册表（rules/，G2 定案，命中行 0 次 LLM 调用）
+- `LLMChannel` / `build_prompt` / `load_few_shot_samples` / `MOCK_MODEL_PRICING_CNY_PER_1K` 等
+  —— LLM 通道（llm/，T3，G3/G8 定案：prompt 组装 + few-shot 样本池 + 兜底编排，mock 先行）
 """
 
 from oncall.classify.client import (
@@ -18,6 +20,22 @@ from oncall.classify.client import (
     MockLLMClassifier,
 )
 from oncall.classify.deriver import DEFAULT_RISK_CONFIDENCE_THRESHOLD, derive_verdict
+from oncall.classify.llm import (
+    DEFAULT_LLM_TIMEOUT_SECONDS,
+    FALLBACK_CONFIDENCE,
+    FALLBACK_REASON_OUTPUT_ERROR,
+    FALLBACK_REASON_TIMEOUT,
+    MAX_OUTPUT_RETRIES,
+    MOCK_MODEL_PRICING_CNY_PER_1K,
+    VALIDATION_SCENARIO_SLUGS,
+    FewShotSample,
+    LLMChannel,
+    LLMChannelOptions,
+    LLMPrompt,
+    build_prompt,
+    estimate_tokens,
+    load_few_shot_samples,
+)
 from oncall.classify.models import (
     ClassificationChannel,
     ClassificationResult,
@@ -38,17 +56,28 @@ from oncall.classify.rules import (
 )
 
 __all__ = [
+    "DEFAULT_LLM_TIMEOUT_SECONDS",
     "DEFAULT_RISK_CONFIDENCE_THRESHOLD",
     "DEFAULT_RULES",
+    "FALLBACK_CONFIDENCE",
+    "FALLBACK_REASON_OUTPUT_ERROR",
+    "FALLBACK_REASON_TIMEOUT",
     "MAINTENANCE_WINDOW_RULE",
+    "MAX_OUTPUT_RETRIES",
+    "MOCK_MODEL_PRICING_CNY_PER_1K",
     "RESOLVED_ONLY_GHOST_RULE",
     "STALE_REPLAY_RULE",
+    "VALIDATION_SCENARIO_SLUGS",
     "ClassificationChannel",
     "ClassificationResult",
+    "FewShotSample",
     "LLMCallMeta",
+    "LLMChannel",
+    "LLMChannelOptions",
     "LLMClassifier",
     "LLMClassifierError",
     "LLMOutputError",
+    "LLMPrompt",
     "LLMTimeoutError",
     "LLMVerdict",
     "MaintenanceWindow",
@@ -57,6 +86,9 @@ __all__ = [
     "RuleContext",
     "RuleVerdict",
     "Verdict",
+    "build_prompt",
     "derive_verdict",
+    "estimate_tokens",
+    "load_few_shot_samples",
     "run_rule_channel",
 ]

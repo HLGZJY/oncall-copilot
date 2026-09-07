@@ -48,6 +48,8 @@ read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增
 | 规则通道 / Rule Channel | M2 双通道中的确定性谓词预筛层：每条规则只判「误报直判」或「放行」，**不判真实**；能写成确定性谓词的才进规则通道 | 规则引擎、预分类、过滤器 |
 | 规则名 / Rule Name | 规则通道中每条谓词规则的稳定标识，统计报告按其归因（落 `reason` 前缀 `[name]`）；初始集：`resolved_only_ghost`（resolved-only 幽灵通知）/ `maintenance_window`（维护窗口/静默期）/ `stale_replay`（重放/迟到期已失效） | 规则 ID、规则编号 |
 | LLM 通道 / LLM Channel | M2 双通道中的 few-shot 兜底分类层：只处理规则未决的告警，结构化输出 `{verdict, confidence, reason}`，置信度低于阈值落风险 | 大模型分类、智能分类 |
+| few-shot 样本池 / Few-Shot Pool | LLM 通道 prompt 的示例样本集合：loader 只从 `datasets/golden/dev/` 取、按 golden 可选 `classification` 字段分组（缺省 incident）、每态 K 条；确定性产出（场景名字典序） | 示例库、模板池 |
+| 验证剧本 / Validation Scenario | M2 端到端验收用的 3 个剧本：`slow-sql`（基础设施）/ `protocol-mismatch`（业务语义层）/ `false-positive-flap`（历史误报，issue 06 落地）；**永不进入 few-shot 样本池**（防自证泄漏） | 验收集（holdout 是另一个概念） |
 | L0–L5 成熟度 | Agent 自主性分级（白鳝分级）。本项目目标水位 **L3 受控自动执行** | — |
 
 ## 三、安全与处置
