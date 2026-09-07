@@ -9,4 +9,8 @@ expected_alerts:
   - DemoDbPoolSaturated
   - DemoHighErrorRate
 expected_root_cause: 注入会话对 tasks 表持有 LOCK TABLES WRITE 并 SLEEP，api-gw 全部 tasks 读写阻塞在表锁上，连接池随之打满
+expected_investigation_path:
+  - 查 MySQL processlist 与 data_locks 确认持锁会话
+  - 查 /tasks P95 与连接池占用随锁等待的联动
+  - docker exec 进 mysql 查 SLEEP 会话与 LOCK TABLES WRITE 来源
 expected_remediation: KILL 持锁会话释放表锁，等阻塞请求排空（≤35s）后 /tasks 延迟与连接池占用回落

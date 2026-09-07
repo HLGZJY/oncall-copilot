@@ -8,9 +8,9 @@ root_cause: pumba kill 向 worker 容器 PID 1 发 SIGKILL，容器 ExitCode=137
   20 后持续增长（实测 12 线程探针下净增 ~24/s）；积压任务即滞留 pending，DemoTasksStuckPending 随之触发；与 OOM 剧本区分点——被杀的是消费端（ExitCode=137
   实测确认），提交面完全正常
 investigation_path:
-- 查 up 指标与容器退出码/重启记录定位故障进程
-- 查业务指标（miss 率/滞留任务）确认受影响面
-- 重启/恢复组件后回查指标确认收敛
+- 查容器退出码与重启事件确认 137（SIGKILL）
+- 查任务积压回升确认消费端缺位
+- docker inspect 查 OOMKilled=false 排除内存因素（区别于剧本 03）
 remediation: 先移除 Pumba（kill 值守循环）再重启 worker，恢复后以约 9/s 消化积压
 runs:
 - started_at: '2026-09-06T12:55:42Z'

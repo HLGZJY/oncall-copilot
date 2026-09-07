@@ -8,6 +8,9 @@ expected_alerts:
   - DemoTasksHighLatency
   - DemoDbPoolSaturated
   - DemoApiGwHighLatency
-  - DemoQueueDepthHigh
-expected_root_cause: Pumba netem 对 api-gw 出方向全部流量随机丢 25% 的包（实测：Docker Desktop/WSL2 上端口过滤不生效，改全流量），TCP 重传（RTO 200ms~1s）把 DB 查询延迟拉高且尾部抖动剧烈，与恒定延迟（剧本 04）的指标形态可区分；实测 DemoTasksHighLatency/DemoDbPoolSaturated 先后触发，DB 变慢连带队列堆积与非 DB 路径延迟抬升
+expected_root_cause: Pumba netem 对 api-gw 出方向全部流量随机丢 25% 的包（实测：Docker Desktop/WSL2 上端口过滤不生效，改全流量），TCP 重传（RTO 200ms~1s）把 DB 查询延迟拉高且尾部抖动剧烈，与恒定延迟（剧本 04）的指标形态可区分；实测 DemoTasksHighLatency/DemoDbPoolSaturated/DemoApiGwHighLatency 先后触发，DemoQueueDepthHigh 未越 for:2m 阈值未触发——推演级联不成立，预期口径已按实测收敛
+expected_investigation_path:
+  - 查 /tasks P95 与 DB 查询延迟确认尾部尖刺/抖动形态（区别于恒定延迟）
+  - 查 TCP 重传计数与连接超时分布确认 RTO 重传
+  - docker exec 进 api-gw 查 tc qdisc 确认 netem loss 注入
 expected_remediation: 停止 Pumba（SIGTERM 触发 tc qdisc 撤销）与探针，等 TCP 重传队列排空后 /tasks 延迟回落（实测清理后全部告警恢复）

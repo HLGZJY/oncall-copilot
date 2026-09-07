@@ -7,4 +7,8 @@ cleanup: chaos/scenarios/03-oom-kill/cleanup.sh
 expected_alerts:
   - DemoApiGwDown
 expected_root_cause: api-gw 容器 cgroup memory.max 被压到当前 RSS 的 60%，业务探针流量迫使分配越限，内核 OOM killer 终结 PID 1（uvicorn），容器以 OOMKilled 退出，Prometheus 抓取失联（注入手段偏离原表 Pumba：stress-vm 的 OOM 受害者不可控，见 inject.sh 头注释）
+expected_investigation_path:
+  - 查容器内存用量与 memory.max 限制、OOM 事件
+  - 查容器退出码与重启次数确认 PID1 被杀
+  - docker inspect 查 OOMKilled 与 memory 约束来源
 expected_remediation: 停探针、恢复容器内存上限并重新拉起 api-gw，等待健康检查通过、up 指标回到 1（实测注入 ~25s 内容器 OOMKilled 退出，确定性触发；DemoApiGwDown 按 for:2m 于 ~2 分钟后 firing）

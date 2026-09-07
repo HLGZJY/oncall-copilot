@@ -9,4 +9,8 @@ expected_alerts:
   - DemoCacheMissSpike
   - DemoApiGwHighLatency
 expected_root_cause: 16 进程 × 24 线程 keep-alive 连接持续读不存在任务 id（缓存必未命中），每次 GET 占用池连接做 pre_ping+PK 查询，池 1 分钟平均占用稳定超过 70% 容量；404 流量天然 100% cache miss 连带 DemoCacheMissSpike，服务端线程池饱和连带非 DB 路径延迟抬升触发 DemoApiGwHighLatency（级联已实测确认）；必须 keep-alive+多进程——短连接/单进程多线程下客户端开销盖过服务端，池占用只到 3~4（实测）
+expected_investigation_path:
+  - 查连接池占用率与 QPS 曲线确认同步读打满池
+  - 确认无慢查询与锁等待排除 DB 侧因素（区别于剧本 02/06）
+  - 定位读负载来源并评估池容量
 expected_remediation: 停掉压测探针，连接随请求结束即时归还池，无持久状态需要恢复

@@ -4,13 +4,11 @@
 # 标注状态: DRAFT（Agent 初稿）→ 待人工抽核 → 双签回填
 
 scenario: queue-backlog
-root_cause: 探针 16 task/s 持续灌任务而 worker 消费能力约 9 task/s，Celery 队列净堆积约 7 task/s，深度越过
-  20 后持续增长；积压任务本身就是滞留 pending（实测 DemoTasksStuckPending 随之触发）；队列深度指标读 broker 所在 redis
-  db1（本次开发期修复其真实反映）
+root_cause: 探针 16 task/s 持续灌任务而 worker 消费能力约 9 task/s，Celery 队列净堆积约 7 task/s，深度越过 20 后持续增长；积压任务由 worker 以约 9/s 持续消化前进（排队而非停滞），StuckPending 口径为 stale pending >5 持续 2m（任务卡死不动）实测未满足——推演级联不成立，预期口径已按实测收敛；队列深度指标读 broker 所在 redis db1（本次开发期修复其真实反映）
 investigation_path:
-- 查 QPS/提交速率与消费速率对比，确认净堆积方向
-- 查队列深度/连接池占用随时间曲线确认饱和点
-- 评估容量：扩容消费端或限流生产端
+- 查任务提交速率与消费速率对比确认净堆积方向（16 task/s 灌入 vs 约 9 task/s 消化）
+- 查队列深度曲线确认越过阈值 20 的时点
+- 定位生产端压测探针为堆积来源
 remediation: 停掉压测探针，worker 以约 9/s 把积压自然消化完；扩容 worker 并发是生产上的对症手段
 runs:
 - started_at: '2026-09-06T12:29:13Z'

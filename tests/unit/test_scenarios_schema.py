@@ -2,7 +2,10 @@
 
 D-12 冻结的九字段契约：name / fault_type / category / inject / inject_method /
 cleanup / expected_alerts / expected_root_cause / expected_remediation。
+D-18 扩展为十字段：新增 expected_investigation_path（排查路径唯一权威源，
+golden 逐字复制——修复 P2 跨剧本复用的结构缺口）。
 黄金集：scenario + runs[>=3]（alert_timeline[>=1]）+ root_cause + investigation_path + remediation。
+golden_matches_scenario 从"只比名字"升级为三标注字段逐字一致性校验（P2 防线）。
 """
 
 from __future__ import annotations
@@ -38,18 +41,27 @@ def make_scenario(**overrides) -> dict:
         "cleanup": "chaos/scenarios/01-cpu-spike/cleanup.sh",
         "expected_alerts": ["DemoWorkerCPUHigh"],
         "expected_root_cause": "worker 容器 CPU 被 pumba 打满",
+        "expected_investigation_path": ["查 worker CPU 指标确认饱和"],
         "expected_remediation": "停止注入并重启 worker 容器",
     }
     base.update(overrides)
     return base
 
 
-def make_golden(scenario: str = "cpu-spike", n_runs: int = 3) -> dict:
+def make_golden(
+    scenario: str = "cpu-spike",
+    n_runs: int = 3,
+    *,
+    root_cause_override: str | None = None,
+    path_override: list[str] | None = None,
+    remediation_override: str | None = None,
+) -> dict:
     return {
         "scenario": scenario,
-        "root_cause": "worker 容器 CPU 饱和（pumba 注入）",
-        "investigation_path": ["查 QPS 排除流量因素", "查 worker CPU 指标确认饱和"],
-        "remediation": "停止 pumba 注入并重启 worker",
+        # 三标注字段与 make_scenario 的 expected_* 逐字一致（D-18 同源纪律）
+        "root_cause": root_cause_override or "worker 容器 CPU 被 pumba 打满",
+        "investigation_path": path_override or ["查 worker CPU 指标确认饱和"],
+        "remediation": remediation_override or "停止注入并重启 worker 容器",
         "runs": [
             {
                 "started_at": "2026-09-06T10:00:00Z",
@@ -112,6 +124,25 @@ class TestScenarioSpec:
     def test_empty_strings_rejected(self, field, value):
         with pytest.raises(ValidationError):
             ScenarioSpec.model_validate(make_scenario(**{field: value}))
+
+
+class TestExpectedInvestigationPath:
+    """D-18 十字段契约：排查路径权威源前移到 scenario.yaml（P2 修复）。"""
+
+    def test_missing_field_reports_field_name(self):
+        bad = make_scenario()
+        del bad["expected_investigation_path"]
+        with pytest.raises(ValidationError) as exc:
+            ScenarioSpec.model_validate(bad)
+        assert "expected_investigation_path" in str(exc.value)
+
+    def test_empty_list_rejected(self):
+        with pytest.raises(ValidationError):
+            ScenarioSpec.model_validate(make_scenario(expected_investigation_path=[]))
+
+    def test_step_cannot_be_blank(self):
+        with pytest.raises(ValidationError):
+            ScenarioSpec.model_validate(make_scenario(expected_investigation_path=["查 CPU", "  "]))
 
 
 class TestGoldenSet:
@@ -223,3 +254,27 @@ class TestCrossValidation:
         spec = ScenarioSpec.model_validate(make_scenario())
         golden = GoldenSet.model_validate(make_golden(scenario="cpu-spike"))
         assert golden_matches_scenario(golden, spec)
+
+
+class TestAnnotationConsistency:
+    """D-18：golden_matches_scenario 从"只比名字"升级为三标注字段逐字一致（P2 防线）。"""
+
+    def test_root_cause_mismatch_rejected(self):
+        spec = ScenarioSpec.model_validate(make_scenario())
+        golden = GoldenSet.model_validate(
+            make_golden(root_cause_override="CPU 飙高是流量太大（错误推断）")
+        )
+        assert not golden_matches_scenario(golden, spec)
+
+    def test_remediation_mismatch_rejected(self):
+        spec = ScenarioSpec.model_validate(make_scenario())
+        golden = GoldenSet.model_validate(make_golden(remediation_override="加机器（不对症）"))
+        assert not golden_matches_scenario(golden, spec)
+
+    def test_investigation_path_step_mismatch_rejected(self):
+        # 跨剧本复制 path 的复现样本：单条步骤不同即不一致
+        spec = ScenarioSpec.model_validate(make_scenario())
+        golden = GoldenSet.model_validate(
+            make_golden(path_override=["查队列深度（从别的剧本抄来的）"])
+        )
+        assert not golden_matches_scenario(golden, spec)

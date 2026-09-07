@@ -2,7 +2,7 @@
 title: "黄金集标注校准设计（P1 口径修正 + P2 排查路径定制）"
 summary: "修复 M0-05 双盲复核发现的预标注与实测不符（3 剧本级联未发生）与 investigation_path 跨剧本复用问题，含 schema 契约变更与校验器增强"
 source: docs/design/feature-design-template.md
-status: draft
+status: implemented
 updated: 2026-09-07
 read_when: 处理 M0-05 黄金集 P1/P2 发现、改动 scenario.yaml 或 scenarios/schema.py 前
 ---
@@ -13,8 +13,8 @@ read_when: 处理 M0-05 黄金集 P1/P2 发现、改动 scenario.yaml 或 scenar
 
 `draft`（草案，讨论中）→ `reviewed`（评审通过，可开工）→ `implemented`（已落地，实测数据已回填）
 
-- **当前状态**：`draft`
-- **评审人 / 评审日期**：（待用户评审）
+- **当前状态**：`implemented`（2026-09-07 方案 A 裁决后当日落地；D-18 已登记）
+- **评审人 / 评审日期**：用户裁决方案 A（2026-09-07）
 - **关联 issue**：`.scratch/m0-environment/issues/05-golden-set.md`（Comments 2026-09-07 双盲复核，发现 1/2/3）
 - **触发**：issue 06 receiver 切换的前置门槛；本设计评审通过后 M0-05 的修正路径即定，人工只需裁决 + 双签
 
@@ -93,11 +93,13 @@ read_when: 处理 M0-05 黄金集 P1/P2 发现、改动 scenario.yaml 或 scenar
 
 ## 验收标准
 
-- [ ] P1：3 剧本（queue-backlog / downstream-timeout / packet-loss）的 expected_alerts 与全量 dump 实测触发集合**完全一致**；expected_root_cause 无"实测未发生"的级联措辞（修正前后 diff 留档）
-- [ ] P2：11 个 scenario.yaml 均含 expected_investigation_path 且逐剧本不同；22 个 golden 文件与权威源逐字一致（脚本验证，不许目测）
-- [ ] 校验器：R6 + 三字段一致性校验落地，正向/负向用例各 ≥2（负向含"P1 复现样本"：timeline 出现 expected 外告警报错）；全量 pytest + ruff check + ruff format 绿
-- [ ] M0-05 Comments 追加修正记录；人工抽核 ≥1 剧本 + 双签后 issue 置 resolved（人的裁决权不因自动化旁路）
-- [ ] holdout 与 dev 标注仍逐字一致（R4 防复制规则继续生效，run 时间线零改动）
+- [x] P1：3 剧本（queue-backlog / downstream-timeout / packet-loss）的 expected_alerts 与全量 dump 实测触发集合**完全一致**（分别删 DemoTasksStuckPending×1 / DemoQueueDepthHigh+DemoTasksStuckPending / DemoQueueDepthHigh）；expected_root_cause 已改写为实测口径（含 StuckPending `stale pending >5 for 2m` 规则依据、推演级联不成立声明）——脚本校验 dev/holdout×3 与 scenario.yaml 逐字一致 ✓
+- [x] P2：11 个 scenario.yaml 均含 expected_investigation_path 且逐剧本不同（第 1 步全部指向 inject.sh 首个可观测信号）；22 个 golden 文件三字段与权威源逐字一致（脚本断言，非目测）✓
+- [x] 校验器：R6 + 三字段一致性校验落地（`_cross_check_slug`），负向用例含 P1 复现样本（timeline 出现 expected 外告警报错）、标注漂移样本、缺剧本样本；全量 **pytest 143 passed / 4 skipped，coverage 95.89%**，ruff check + format 绿 ✓
+- [ ] M0-05 Comments 追加修正记录；人工抽核 ≥1 剧本 + 双签后 issue 置 resolved（人的裁决权不因自动化旁路）——**待人工**
+- [x] holdout 与 dev 标注仍逐字一致（R4 防复制规则继续生效，run 时间线零改动——git diff 可核时间线字段未动）✓
+
+**实施备注**：①`yaml.safe_dump` 折行中文长文本会追加 `...` 文档结束标记（非法）且折行处读回引入空格——P1 三剧本 root_cause 块最终以**不折行单行**落盘（width=10⁹），修正脚本曾两轮迭代；②校准脚本放 `.scratch/tmp/` 用完即删，过程结论以本节与 M0-05 Comments 为准。
 
 ## 依赖
 

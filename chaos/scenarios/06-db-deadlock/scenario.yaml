@@ -9,4 +9,8 @@ expected_alerts:
   - DemoDbPoolSaturated
   - DemoHighErrorRate
 expected_root_cause: 两个事务分别持有第 1 行与末行+supremum next-key 锁并互相申请对方持有物，innodb_deadlock_detect 被关闭导致锁环无法自动解开；supremum 锁阻塞一切 INSERT，POST /tasks 全部挂起直至连接池超时
+expected_investigation_path:
+  - 查 InnoDB 锁等待与事务列表（data_locks/innodb_trx）确认锁环
+  - 查应用侧 DB 超时与重试日志确认被锁影响面
+  - 查 innodb_deadlock_detect 配置确认为 OFF（检测关闭导致锁环不解）
 expected_remediation: KILL 两个死锁会话（事务回滚释放锁），恢复 innodb_deadlock_detect=ON，等在途请求排空后延迟/连接池/错误率回落（实测三条告警全部触发；首轮实测曾因 /metrics 依赖主连接池导致 DemoApiGwDown 误触发——已用专用短超时引擎 metrics_engine 修复观测正交性）

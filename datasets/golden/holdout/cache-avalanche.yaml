@@ -9,9 +9,9 @@ root_cause: flusher 容器以 50ms 间隔持续 FLUSHDB 清空缓存层（等效
   查询毫秒级），DemoDbPoolSaturated 实测未触发——预判已按实测修正；FLUSHDB 只清 db0 不碰 broker（db1），缓存故障不连带消息队列。注：10s
   级 flush 间隔不够——热点键秒级回填，miss 窗口一闪而过（实测 miss 率仅 2.6/s）
 investigation_path:
-- 查 up 指标与容器退出码/重启记录定位故障进程
-- 查业务指标（miss 率/滞留任务）确认受影响面
-- 重启/恢复组件后回查指标确认收敛
+- 查缓存 miss 率跳变与 redis 命中率曲线确认缓存层失效
+- 查 DB QPS 抬升确认回源压力
+- 查 redis 命令统计确认 FLUSHDB db0（broker 所在 db1 不受影响）
 remediation: 停 flusher 与探针，缓存随流量自然回温，miss 率与延迟回落（实测清理后全部告警恢复）；生产对策是 TTL 加随机抖动与多级缓存
 runs:
 - started_at: '2026-09-06T13:53:57Z'

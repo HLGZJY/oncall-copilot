@@ -3,6 +3,8 @@
 字段契约（docs/design/m0-environment-design.md 评审落定，改动须过 decisions.md）：
 - scenario.yaml 九字段：name / fault_type / category / inject / inject_method /
   cleanup / expected_alerts / expected_root_cause / expected_remediation
+- D-18 扩展为十字段：新增 expected_investigation_path（排查路径唯一权威源，
+  golden 逐字复制——修复 P2 跨剧本复用的结构缺口）
 - 黄金集：scenario + runs（单文件 ≥1；目录树层强制 dev≥2 + holdout≥1 = 每剧本 ×3）
   + root_cause + investigation_path + remediation
 
@@ -45,7 +47,20 @@ class ScenarioSpec(BaseModel):
     cleanup: str = Field(min_length=1, description="清理脚本，保证剧本可重复执行")
     expected_alerts: list[str] = Field(min_length=1, description="预期触发的告警规则名，防哑剧本")
     expected_root_cause: str = Field(min_length=1)
+    expected_investigation_path: list[str] = Field(
+        min_length=1,
+        description="标准排查路径（D-18 权威源）：golden 逐字复制，第 1 步须指向"
+        " inject.sh 直接产生的首个可独立观测信号",
+    )
     expected_remediation: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _path_steps_not_blank(self) -> ScenarioSpec:
+        blanks = [i for i, s in enumerate(self.expected_investigation_path) if not s.strip()]
+        if blanks:
+            msg = f"expected_investigation_path 第 {blanks} 步为空白，排查路径步骤不得为空"
+            raise ValueError(msg)
+        return self
 
 
 class AlertEvent(BaseModel):
@@ -103,8 +118,17 @@ class GoldenSet(BaseModel):
 
 
 def golden_matches_scenario(golden: GoldenSet, spec: ScenarioSpec) -> bool:
-    """黄金集与剧本的对应关系校验（防标注文件与剧本错位）。"""
-    return golden.scenario == spec.name
+    """黄金集与剧本的对应关系校验（D-18：三标注字段逐字一致，防标注漂移）。
+
+    P2 教训：investigation_path 此前无权威源，跨剧本复制无人拦截——
+    现在三个标注字段都必须与 scenario.yaml 的 expected_* 逐字相同。
+    """
+    return (
+        golden.scenario == spec.name
+        and golden.root_cause == spec.expected_root_cause
+        and golden.investigation_path == spec.expected_investigation_path
+        and golden.remediation == spec.expected_remediation
+    )
 
 
 def _load_yaml_file(path: Path) -> dict:
@@ -142,8 +166,65 @@ HOLDOUT_MIN_RUNS = 1
 _SPLITS = ("dev", "holdout")
 
 
-def load_golden_tree(root: str | Path) -> dict[str, dict[str, GoldenSet]]:
-    """扫描 datasets/golden/{dev,holdout}/<slug>.yaml 双集目录树并校验（issue 05）。
+def _cross_check_slug(slug: str, tree: dict[str, dict[str, GoldenSet]], spec: ScenarioSpec) -> None:
+    """R6 单剧本交叉校验：timeline ⊆ expected_alerts + 三标注字段逐字一致（D-18）。"""
+    timeline_alerts = {
+        a.alert_name for split in _SPLITS for r in tree[split][slug].runs for a in r.alert_timeline
+    }
+    unobserved = timeline_alerts - set(spec.expected_alerts)
+    if unobserved:
+        msg = (
+            f"{slug}: 时间线出现 expected_alerts 之外的告警 {sorted(unobserved)}"
+            "——预标注声称的告警必须实测触发过（P1 教训：推演级联不得写入预期）"
+        )
+        raise ScenarioValidationError(msg)
+    if not golden_matches_scenario(tree["dev"][slug], spec):
+        msg = (
+            f"{slug}: dev 集标注与 scenario.yaml expected_* 不逐字一致"
+            "（root_cause/investigation_path/remediation 三字段同源纪律）"
+        )
+        raise ScenarioValidationError(msg)
+    if not golden_matches_scenario(tree["holdout"][slug], spec):
+        msg = f"{slug}: holdout 集标注与 scenario.yaml expected_* 不逐字一致（双集标注必须同步）"
+        raise ScenarioValidationError(msg)
+
+
+def _load_specs(scenarios_dir: Path) -> dict[str, ScenarioSpec]:
+    """加载剧本目录下全部 ScenarioSpec（R6 前置；目录缺失即报错）。"""
+    if not scenarios_dir.is_dir():
+        msg = f"scenarios_dir 不存在: {scenarios_dir}——R6 交叉校验需要剧本目录"
+        raise ScenarioValidationError(msg)
+    specs: dict[str, ScenarioSpec] = {}
+    for p in sorted(scenarios_dir.iterdir()):
+        if (p / "scenario.yaml").is_file():
+            spec = load_scenario_file(p / "scenario.yaml")
+            specs[spec.name] = spec
+    return specs
+
+
+def _check_pair_rules(slug: str, dev: GoldenSet, holdout: GoldenSet) -> None:
+    """R2 成对 / R3 run 数下限 / R4 防复制（dev+holdout 双集结构规则）。"""
+    dev_runs, holdout_runs = dev.runs, holdout.runs
+    if len(dev_runs) < DEV_MIN_RUNS:  # R3
+        msg = f"{slug}: dev 集仅 {len(dev_runs)} run，下限 {DEV_MIN_RUNS}（口径 dev2+holdout1）"
+        raise ScenarioValidationError(msg)
+    if len(holdout_runs) < HOLDOUT_MIN_RUNS:  # R3
+        msg = f"{slug}: holdout 集仅 {len(holdout_runs)} run，下限 {HOLDOUT_MIN_RUNS}"
+        raise ScenarioValidationError(msg)
+    dev_starts = {r.started_at for r in dev_runs}
+    overlap = dev_starts & {r.started_at for r in holdout_runs}
+    if overlap:  # R4
+        msg = (
+            f"{slug}: 同一 run(started_at={sorted(overlap)}) 同时出现在 dev 与 holdout"
+            "——疑似复制而非独立采集"
+        )
+        raise ScenarioValidationError(msg)
+
+
+def load_golden_tree(
+    root: str | Path, scenarios_dir: str | Path | None = None
+) -> dict[str, dict[str, GoldenSet]]:
+    """扫描 datasets/golden/{dev,holdout}/<slug>.yaml 双集目录树并校验（issue 05 / D-18）。
 
     双集隔离（architecture.md §6）：dev 调参可看，holdout 终评专用。
     目录树层规则（schema 层只管单文件）：
@@ -152,6 +233,9 @@ def load_golden_tree(root: str | Path) -> dict[str, dict[str, GoldenSet]]:
     R3 run 数下限：dev ≥2，holdout ≥1（每剧本 ×3 = 2+1 的拆分口径）
     R4 防复制：同一 slug 在 dev 与 holdout 不得出现相同 started_at 的 run
     R5 空树允许（分批采集中），已存在的文件必须合法
+    R6 交叉校验（仅当传入 scenarios_dir）：timeline alertname ⊆ expected_alerts
+       （P1 防线：预标注声称的告警必须在实测时间线出现过）+ 三标注字段与
+       scenario.yaml 逐字一致（P2 防线）；golden 引用不存在的剧本同样报错。
 
     返回 {"dev": {slug: GoldenSet}, "holdout": {slug: GoldenSet}}。
     """
@@ -169,6 +253,9 @@ def load_golden_tree(root: str | Path) -> dict[str, dict[str, GoldenSet]]:
                 raise ScenarioValidationError(msg)
             tree[split][f.stem] = golden
 
+    # R6 前置：加载剧本 spec（slug 无对应剧本在交叉校验时暴露）
+    specs = _load_specs(scenarios_dir) if scenarios_dir is not None else {}
+
     slugs = {s for split in _SPLITS for s in tree[split]}
     for slug in sorted(slugs):
         in_dev, in_holdout = slug in tree["dev"], slug in tree["holdout"]
@@ -177,20 +264,12 @@ def load_golden_tree(root: str | Path) -> dict[str, dict[str, GoldenSet]]:
             msg = f"{slug}: 黄金集双集不成对——{missing} 目录缺少 {slug}.yaml"
             raise ScenarioValidationError(msg)
 
-        dev_runs, holdout_runs = tree["dev"][slug].runs, tree["holdout"][slug].runs
-        if len(dev_runs) < DEV_MIN_RUNS:  # R3
-            msg = f"{slug}: dev 集仅 {len(dev_runs)} run，下限 {DEV_MIN_RUNS}（口径 dev2+holdout1）"
-            raise ScenarioValidationError(msg)
-        if len(holdout_runs) < HOLDOUT_MIN_RUNS:  # R3
-            msg = f"{slug}: holdout 集仅 {len(holdout_runs)} run，下限 {HOLDOUT_MIN_RUNS}"
-            raise ScenarioValidationError(msg)
+        _check_pair_rules(slug, tree["dev"][slug], tree["holdout"][slug])
 
-        dev_starts = {r.started_at for r in dev_runs}
-        overlap = dev_starts & {r.started_at for r in holdout_runs}
-        if overlap:  # R4
-            msg = (
-                f"{slug}: 同一 run(started_at={sorted(overlap)}) 同时出现在 dev 与 holdout"
-                "——疑似复制而非独立采集"
-            )
-            raise ScenarioValidationError(msg)
+        if scenarios_dir is not None:  # R6
+            spec = specs.get(slug)
+            if spec is None:
+                msg = f"{slug}: 黄金集引用了不存在的剧本（{scenarios_dir} 下无 name={slug}）"
+                raise ScenarioValidationError(msg)
+            _cross_check_slug(slug, tree, spec)
     return tree

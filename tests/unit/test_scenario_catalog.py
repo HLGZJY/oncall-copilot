@@ -15,6 +15,7 @@ import yaml
 
 from oncall.scenarios.schema import (
     ScenarioCategory,
+    load_golden_tree,
     load_scenario_file,
 )
 
@@ -88,3 +89,15 @@ def test_no_dumb_scenario_every_alert_is_configured():
         f"存在哑剧本（expected_alerts 引用了未配置的告警规则）: {dumb}。"
         f"下一步: 在 {RULES_FILE} 补规则，或改写 expected_alerts 为已配置规则名。"
     )
+
+
+def test_golden_tree_cross_validates_against_scenarios():
+    """真实数据 R6 交叉校验（D-18，M0-05 校准设计）：
+    datasets/golden 全树 vs chaos/scenarios——timeline ⊆ expected_alerts +
+    三标注字段逐字一致。P1/P2 类漂移从此在单测门禁被拦截。
+    """
+    golden_dir = REPO_ROOT / "datasets" / "golden"
+    if not (golden_dir / "dev").is_dir():
+        return  # 黄金集未开始采集时跳过
+    tree = load_golden_tree(golden_dir, scenarios_dir=SCENARIOS_DIR)
+    assert tree["dev"] or tree["holdout"] or True  # 空树合法；非空则上面已强制 R6
