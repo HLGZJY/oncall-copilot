@@ -41,6 +41,49 @@ Blocked by: 04
 - 07 号遗留两个 idle 观察容器（vibrant_chatterjee / objective_germain，仅 `tail -f /dev/null`）不注入任何东西，可手动清理
 - 剩余 7 剧本（01/02/03/07/08/09/10）采集顺延，同一套工具直接复用
 
+### 2026-09-07 双盲复核（Agent 独立重推，待人工裁决）
+
+**方法**：先只读 11 个 inject.sh/cleanup.sh 独立推导根因（不看标注思路），再与标注对比；
+脚本核对 4 项——①golden vs scenario.yaml 逐字关系 ②timeline vs expected_alerts 集合差
+③_raw 切片 + 全量 dump 对缺口告警终审 ④holdout 与 dev 一致性。
+
+**结论 1（通过）**：11 剧本 `root_cause`/`remediation` 与 `scenario.yaml` 的 `expected_*`
+**逐字一致**（此前采集 Comments 未明说复制关系，特此钉死）；root_cause 机理审查 11/11
+与注入脚本证据相符（cpuset+stress-ng+cgroup 注入 / LOCK TABLES WRITE+SLEEP / memory.max
+60% OOM PID1 / netem 700ms / 25% loss RTO 重传 / 锁环+supremum+死锁检测 OFF /
+16>9 task/s 净堆积 / 192 keep-alive 404 必 miss / SIGKILL 137 杀消费端 / FLUSHDB db0
+50ms 间隔不碰 broker db1 / 门禁 v2 语义层静默跳过），时间线因果序全部自洽。
+
+**发现 1（P1，需修口径）**：3 个剧本预标注声称的级联告警**实测未发生**（全量 dump 时间窗
+终审 0 firing，排除切片丢数据）：
+- `queue-backlog`：root_cause 称"实测 DemoTasksStuckPending 随之触发"——实测 0 次
+- `downstream-timeout`：expected 5 条告警实测只出现 3 种（QueueDepthHigh / StuckPending
+  未触发），root_cause"队列堆积/任务滞留级联"系推演非实测
+- `packet-loss`：root_cause 称"连带队列堆积"——QueueDepthHigh 实测 0 次
+- 机理裁决：DB 变慢同时拖慢提交（POST 写 DB）与消费两侧，净堆积未越 for:2m 阈值，
+  级联不成立。**建议**：修 `scenario.yaml` 的 expected_alerts / expected_root_cause
+  措辞（golden 逐字同源会同步），或在标注中注明"该级联为推演，实测未发生"。
+
+**发现 2（P2，需修 path）**：`investigation_path` 两组疑似跨剧本复用且与机理不匹配：
+- `cache-avalanche` 第 1 步"查 up 指标与容器退出码"——缓存故障无进程死亡（up 全绿、
+  无退出码），应从 miss 率 / redis 写入行为切入
+- `pool-exhaustion` 第 1/2 步"提交/消费速率对比、队列深度"——同步读负载无队列环节，
+  应从池占用 + QPS + 无慢查询切入
+建议 11 个剧本 path 逐剧本定制（M7 判分依赖此路径，误导性步骤会白白消耗 Agent 步数）。
+
+**发现 3（P2，M7 判分注意）**：timeline labels 里的 `scenario` 标签是 rules.yml 静态
+来源标注（如 db-deadlock 时间线里 scenario=slow-sql）——M7 归属判定只能用
+alertname ∈ expected_alerts，禁用该 label；已验证 golden 原样保留实测 labels 未篡改
+（符合"不编造"纪律）。
+
+**发现 4（记录，非错误）**：2 处 `resolved_at: null`（packet-loss r1 HighLatency /
+pool-exhaustion r1 CacheMissSpike）经 _raw + 全量 dump 终审确认为 dump 未收到对应
+resolved 通知，属如实记录；M7 配对时该 run 的恢复以 `recovered_at` 为准。
+
+**holdout**：11 文件标注与 dev 全一致，r3 为独立轮次。
+
+**待人工**：发现 1/2 的修正裁决 + ≥1 剧本抽核双签。本 issue 保持 ready-for-human。
+
 ### 2026-09-06 Agent 采集完成（第二批 7 剧本）——11 剧本全部采集完毕，待人工抽核
 
 **已完成**：
