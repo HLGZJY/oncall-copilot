@@ -12,6 +12,9 @@
   —— LLM 通道（llm/，T3，G3/G8 定案：prompt 组装 + few-shot 样本池 + 兜底编排，mock 先行）
 - `ClassifyOptions` / `ClassifySummary` / `classify_alerts`
   —— 双通道编排落库服务（service.py，T4，G4/G5 定案：规则先行 → LLM 通道 → 同事务落库）
+- `AlertStatsRow` / `LogicalAlert` / `GoldenAnnotation` / `merge_logical_alerts` /
+  `compute_denoise_metrics` 等
+  —— 降噪统计口径（stats.py，T5，G6/D-20 定案：逻辑告警归并 + 降噪率/漏报核算）
 """
 
 from oncall.classify.client import (
@@ -62,6 +65,15 @@ from oncall.classify.service import (
     ClassifySummary,
     classify_alerts,
 )
+from oncall.classify.stats import (
+    UNCLASSIFIED_VERDICT,
+    AlertStatsRow,
+    GoldenAnnotation,
+    LogicalAlert,
+    compute_denoise_metrics,
+    merge_logical_alerts,
+    snapshot_alert_rows,
+)
 
 __all__ = [
     "DEFAULT_LLM_TIMEOUT_SECONDS",
@@ -75,13 +87,16 @@ __all__ = [
     "MOCK_MODEL_PRICING_CNY_PER_1K",
     "RESOLVED_ONLY_GHOST_RULE",
     "STALE_REPLAY_RULE",
+    "UNCLASSIFIED_VERDICT",
     "VALIDATION_SCENARIO_SLUGS",
+    "AlertStatsRow",
     "ClassificationChannel",
     "ClassificationResult",
     "ClassifyOptions",
     "ClassifyRuntime",
     "ClassifySummary",
     "FewShotSample",
+    "GoldenAnnotation",
     "LLMCallMeta",
     "LLMChannel",
     "LLMChannelOptions",
@@ -91,6 +106,7 @@ __all__ = [
     "LLMPrompt",
     "LLMTimeoutError",
     "LLMVerdict",
+    "LogicalAlert",
     "MaintenanceWindow",
     "MockLLMClassifier",
     "Rule",
@@ -99,8 +115,11 @@ __all__ = [
     "Verdict",
     "build_prompt",
     "classify_alerts",
+    "compute_denoise_metrics",
     "derive_verdict",
     "estimate_tokens",
     "load_few_shot_samples",
+    "merge_logical_alerts",
     "run_rule_channel",
+    "snapshot_alert_rows",
 ]

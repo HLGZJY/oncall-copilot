@@ -76,6 +76,9 @@ read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增
 | Top-1 / Top-3 命中率 | 正确根因位于模型排序前 1 / 前 3 位的比例 | 准确率 |
 | 失败模式 / Failure Mode | 失败**强制**归为五类之一：`tool_error` / `plan_error` / `timeout` / `hallucination` / `no_signal` | 错误类型 |
 | 开发集 / 保留集 | 评测隔离：开发集调参，保留集只用于最终结论，防泄漏 | 训练集/测试集 |
+| 降噪率 / Denoise Rate | 降噪效果核心指标：(R − I) / R，R = Σ `dedup_count`（有效 firing 投递数，D-15 口径，不是行数），I = 判为 incident 的逻辑告警数；R=0 不除零，报告标注「无有效投递」（D-20） | 噪声过滤率、压缩比 |
+| 漏报 / Missed Alert | golden 标注 incident 的逻辑告警被判 false_positive 的数量，验收硬口径必须 = 0；risk 不算漏报（D-07 中间态），单列 risk_observed 观察（D-20） | 漏判、漏检 |
+| 误报误判 / False Alarm | golden 标注 false_positive 的逻辑告警被判 incident 的数量——「冤枉真告警」的另一半口径，与漏报相对，单列观察 | 误杀、反向漏报 |
 
 ## 五、可观测
 
