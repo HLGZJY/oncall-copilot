@@ -109,7 +109,13 @@ services:
   alertmanager:
     image: prom/alertmanager:v0.28.1
     volumes:
-      - ./deploy/alertmanager:/etc/alertmanager:ro
+      # receiver 三档开关（M1 issue 06 / G6，默认 dump 档 = 现状/回退）：
+      #   双写档（dump + oncall 过渡）:
+      #     ONCALL_AM_CONFIG=alertmanager-dual.yml docker-compose up -d alertmanager
+      #   oncall 档（切稳后关 dump）:
+      #     ONCALL_AM_CONFIG=alertmanager-oncall.yml docker-compose up -d alertmanager
+      #   回退 dump 档: 不带变量 up -d alertmanager 即可
+      - ./deploy/alertmanager/${ONCALL_AM_CONFIG:-alertmanager.yml}:/etc/alertmanager/alertmanager.yml:ro
     ports:
       - "127.0.0.1:9093:9093"
 
@@ -121,6 +127,34 @@ services:
     volumes:
       # 追加写宿主 deploy/alerts-dump.jsonl（运行时产物，已 gitignore）
       - ./deploy:/alerts
+
+  # ── oncall ingest（M1 issue 06 收编）：Alertmanager receiver 的目标端点 ──
+  # 依赖随镜像装（pyproject 锁版本），源码直挂 /app/src——改代码 restart 即可；
+  # 仓库根挂 /app/repo 使 oncall.db 宿主可见（与宿主 uvicorn 开发形态同库）。
+  oncall:
+    build:
+      context: .
+      dockerfile: deploy/oncall/Dockerfile
+    environment:
+      ONCALL_DATABASE_URL: sqlite:////app/repo/oncall.db
+      ONCALL_PROMETHEUS_URL: http://prometheus:9090
+    volumes:
+      - ./src:/app/src
+      - ./:/app/repo
+    ports:
+      - "127.0.0.1:8010:8010"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request, sys; r = urllib.request.urlopen('http://127.0.0.1:8010/alerts?limit=1', timeout=3); sys.exit(0 if r.status == 200 else 1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
 
 volumes:
   mysql-data:
