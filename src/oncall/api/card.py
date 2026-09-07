@@ -18,7 +18,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from oncall.context import collect_context
-from oncall.db import AlertEvent
+from oncall.db import AlertEvent, Incident
+from oncall.db.views import alert_body, incident_body  # 再导出，公开面兼容
 from oncall.ingest.fingerprint import as_utc
 
 if TYPE_CHECKING:
@@ -57,35 +58,19 @@ def build_alert_card(
     }
 
 
-def alert_body(row: AlertEvent) -> dict[str, Any]:
-    """归一化告警本体（D-17 键名）：alert_events 行 + annotations 溯源展开。"""
-    provenance = row.annotations_json or {}
-    return {
-        "id": row.id,
-        "fingerprint": row.fingerprint,
-        "source": row.source,
-        "status": row.status,
-        "labels": dict(row.labels_json),
-        "annotations": dict(provenance.get("annotations", {})),
-        # 溯源（G5/D-13）：AM 自带指纹仅交叉溯源；raw_alert/webhook 是 M3 取证输入
-        "am_fingerprint": provenance.get("am_fingerprint", ""),
-        "raw_alert": provenance.get("raw_alert", {}),
-        "webhook": provenance.get("webhook", {}),
-        "fired_at": _iso(row.fired_at),
-        "last_fired_at": _iso(row.last_fired_at),
-        "resolved_at": None if row.resolved_at is None else _iso(row.resolved_at),
-        "dedup_count": row.dedup_count,
-    }
-
-
 def list_alerts(
     session: Session,
     *,
     limit: int = DEFAULT_LIST_LIMIT,
     offset: int = 0,
     fingerprint: str | None = None,
+    verdict: str | None = None,
 ) -> dict[str, Any]:
-    """告警列表（分页 + 按指纹过滤）：只给本体，不给上下文（上下文只在单卡接口）。"""
+    """告警列表（分页 + 指纹/verdict 过滤）：只给本体，不给上下文（上下文只在单卡接口）。
+
+    verdict 过滤走 SQLite JSON1 `json_extract`（D-19/R7：11 剧本规模不预优化，
+    不建独立 verdict 列/索引，实测成为瓶颈再议）。
+    """
     limit = max(1, min(limit, MAX_LIST_LIMIT))
     offset = max(0, offset)
     query = select(AlertEvent)
@@ -93,6 +78,10 @@ def list_alerts(
     if fingerprint is not None:
         query = query.where(AlertEvent.fingerprint == fingerprint)
         count_query = count_query.where(AlertEvent.fingerprint == fingerprint)
+    if verdict is not None:
+        verdict_filter = func.json_extract(AlertEvent.classification_json, "$.verdict") == verdict
+        query = query.where(verdict_filter)
+        count_query = count_query.where(verdict_filter)
     total = session.scalar(count_query) or 0
     rows = session.scalars(
         query.order_by(AlertEvent.last_fired_at.desc(), AlertEvent.id.desc())
@@ -107,5 +96,25 @@ def list_alerts(
     }
 
 
-def _iso(moment: datetime) -> str:
-    return as_utc(moment).isoformat()
+def list_incidents(
+    session: Session,
+    *,
+    limit: int = DEFAULT_LIST_LIMIT,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """事件列表（分页）：M3 调查入口的查询面，每条可经 alert_ids[0] 锚到 D-17 卡片。"""
+    limit = max(1, min(limit, MAX_LIST_LIMIT))
+    offset = max(0, offset)
+    total = session.scalar(select(func.count()).select_from(Incident)) or 0
+    rows = session.scalars(
+        select(Incident)
+        .order_by(Incident.created_at.desc(), Incident.id.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+    return {
+        "items": [incident_body(row) for row in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }

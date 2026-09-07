@@ -10,6 +10,8 @@
   —— 规则通道谓词注册表（rules/，G2 定案，命中行 0 次 LLM 调用）
 - `LLMChannel` / `build_prompt` / `load_few_shot_samples` / `MOCK_MODEL_PRICING_CNY_PER_1K` 等
   —— LLM 通道（llm/，T3，G3/G8 定案：prompt 组装 + few-shot 样本池 + 兜底编排，mock 先行）
+- `ClassifyOptions` / `ClassifySummary` / `classify_alerts`
+  —— 双通道编排落库服务（service.py，T4，G4/G5 定案：规则先行 → LLM 通道 → 同事务落库）
 """
 
 from oncall.classify.client import (
@@ -54,6 +56,12 @@ from oncall.classify.rules import (
     RuleVerdict,
     run_rule_channel,
 )
+from oncall.classify.service import (
+    ClassifyOptions,
+    ClassifyRuntime,
+    ClassifySummary,
+    classify_alerts,
+)
 
 __all__ = [
     "DEFAULT_LLM_TIMEOUT_SECONDS",
@@ -70,6 +78,9 @@ __all__ = [
     "VALIDATION_SCENARIO_SLUGS",
     "ClassificationChannel",
     "ClassificationResult",
+    "ClassifyOptions",
+    "ClassifyRuntime",
+    "ClassifySummary",
     "FewShotSample",
     "LLMCallMeta",
     "LLMChannel",
@@ -87,6 +98,7 @@ __all__ = [
     "RuleVerdict",
     "Verdict",
     "build_prompt",
+    "classify_alerts",
     "derive_verdict",
     "estimate_tokens",
     "load_few_shot_samples",

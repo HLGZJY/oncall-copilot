@@ -1,10 +1,11 @@
 """T1 验收测试：alert_events 表与模型（issue .scratch/m1-alert-ingestion/issues/01）。
 
 契约来源：docs/architecture/architecture.md §4 冻结列 + D-13 增列
-（docs/design/m1-alert-ingestion-design.md §数据模型变更 G5）。
+（docs/design/m1-alert-ingestion-design.md §数据模型变更 G5）
++ D-19 M2 增列与 incidents 建表（m2-denoise-classify-design.md G4/G5）。
 
 覆盖：
-- 字段清单与 D-13 一一对应（10 列），且六表中只建 alert_events（不越界）
+- 字段清单与 D-13 + D-19 一一对应（11 列），六表中 M2 建到 alert_events + incidents
 - 全字段可插入 / 查询 / 更新
 - fingerprint 唯一约束 + 索引可验证
 - status 默认 deduped、CHECK 冻结取值（M2 写 classified）
@@ -35,6 +36,8 @@ D13_COLUMNS = {
     "last_fired_at",
     "resolved_at",
     "annotations_json",
+    # D-19 M2 增列（NULL = 未分类，verdict 查询走 JSON1 json_extract，R7）
+    "classification_json",
 }
 
 
@@ -71,13 +74,13 @@ def _aware(dt: datetime) -> datetime:
 
 
 class TestFieldContract:
-    def test_columns_match_d13_exactly(self, engine):
+    def test_columns_match_d13_d19_exactly(self, engine):
         cols = {c["name"] for c in inspect(engine).get_columns("alert_events")}
         assert cols == D13_COLUMNS
 
-    def test_only_alert_events_table(self, engine):
-        """六表中其余属 M2–M4，M1 不越界建表。"""
-        assert inspect(engine).get_table_names() == ["alert_events"]
+    def test_tables_match_m2_scope(self, engine):
+        """六表中 M1 建 alert_events，M2（issue 04）按 D-19 增建 incidents，其余不越界。"""
+        assert sorted(inspect(engine).get_table_names()) == ["alert_events", "incidents"]
 
     def test_fingerprint_is_indexed_and_unique(self, engine):
         indexes = inspect(engine).get_indexes("alert_events")

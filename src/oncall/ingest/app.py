@@ -26,6 +26,7 @@ from oncall.ingest.schemas import AlertmanagerWebhook
 from oncall.ingest.service import ingest_webhook
 
 if TYPE_CHECKING:
+    from oncall.classify.service import ClassifyRuntime
     from oncall.context.promql import PromClient
 
 DATABASE_URL_ENV = "ONCALL_DATABASE_URL"
@@ -38,11 +39,14 @@ def create_app(
     dedup_window: timedelta | None = None,
     context_config: ContextConfig | None = None,
     context_client: PromClient | None = None,
+    classify_runtime: ClassifyRuntime | None = None,
 ) -> FastAPI:
     """应用工厂：测试注入内存库引擎与上下文替身；进程启动走环境变量配置。
 
     时间窗默认 10 分钟（G1），可用 `ONCALL_DEDUP_WINDOW_SECONDS` 覆盖；
     上下文配置默认 `ContextConfig.from_env()`（issue 04 口径）。
+    `classify_runtime` 透传给 /classify（G4 独立入口）：不注入时该端点落 503，
+    本工厂自身保持零 LLM 运行时依赖（类型仅 TYPE_CHECKING 引用，R6）。
     """
     if engine is None:
         engine = create_engine(os.environ.get(DATABASE_URL_ENV, DEFAULT_DATABASE_URL))
@@ -69,10 +73,16 @@ def create_app(
             result = ingest_webhook(session, webhook, dedup_window)
         return {"received": result.received, "deduped": result.deduped}
 
-    # 事件卡片查询路由（issue 05）：context_client 为 None 时 collect_context
-    # 内部按 config 建生产客户端；测试注入替身避免真实网络
+    # 事件卡片查询路由 + 分类/事件查询（issue 05 / issue 04）：context_client 与
+    # classify_runtime 为 None 时对应端点按各自语义降级（collect_context 显式
+    # unavailable / /classify 落 503）；测试注入替身避免真实网络与真实 LLM
     app.include_router(
-        create_router(engine, context_config=context_config, context_client=context_client)
+        create_router(
+            engine,
+            context_config=context_config,
+            context_client=context_client,
+            classify_runtime=classify_runtime,
+        )
     )
 
     return app

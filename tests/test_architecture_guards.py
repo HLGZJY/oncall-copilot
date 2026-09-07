@@ -26,6 +26,16 @@ HTTP_ALLOWED = {"src/oncall/infra/http.py"}  # _rel_module 以仓库根为基准
 LLM_ALLOWED = {"src/oncall/infra/llm.py"}
 MUTABLE_FACTORIES = {"list", "dict", "set", "bytearray", "defaultdict", "Counter"}
 
+# R6（G4）：ingest 主链路零 LLM 依赖——0 漏收不被外部 LLM 依赖拖垮。
+# app.py 是组装点豁免（llm_channel 为可选注入，仅 /classify 触达）；
+# 主链路四模块（归一化/指纹/落库/schema）连 oncall.classify 的 runtime import 都不允许。
+INGEST_CHAIN_FILES = {
+    "src/oncall/ingest/normalize.py",
+    "src/oncall/ingest/fingerprint.py",
+    "src/oncall/ingest/service.py",
+    "src/oncall/ingest/schemas.py",
+}
+
 
 def _iter_py_files(root: Path) -> list[Path]:
     if not root.exists():
@@ -96,6 +106,28 @@ class TestSourceGuards:
         assert not offenders, (
             f"LLM SDK 出现在收口点之外: {offenders}。"
             "下一步: 改走 oncall/infra/llm.LLMClient（成本埋点/结构化输出/模型分层在此统一）。"
+        )
+
+    def test_ingest_chain_has_zero_llm_dependencies(self):
+        """R6: ingest 主链路零 LLM 依赖——禁 import oncall.classify 与 LLM SDK。"""
+        offenders: list[str] = []
+        for path in _iter_py_files(SRC_ROOT):
+            if _rel_module(path) not in INGEST_CHAIN_FILES:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                names = []
+                if isinstance(node, ast.Import):
+                    names = [a.name for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    names = [node.module]
+                for name in names:
+                    if name.split(".")[0] in LLM_MODULES or name.startswith("oncall.classify"):
+                        offenders.append(f"{_rel_module(path)} imports {name}")
+        assert not offenders, (
+            f"ingest 主链路出现 LLM 依赖: {offenders}。"
+            "下一步: 分类逻辑只经 POST /classify 独立入口触达（R6/G4），"
+            "主链路保持零 oncall.classify import；确需放宽先过 decisions.md 评审。"
         )
 
     def test_no_mutable_module_globals(self):

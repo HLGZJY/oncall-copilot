@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from oncall.db.models import AlertEvent, Base
+from oncall.db.models import AlertEvent, Base, Incident
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
 
-__all__ = ["AlertEvent", "Base", "create_tables"]
+__all__ = ["AlertEvent", "Base", "Incident", "create_tables"]
 
 
 def create_tables(engine: Engine) -> None:

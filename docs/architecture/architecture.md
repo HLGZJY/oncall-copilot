@@ -106,7 +106,12 @@ scenarios      剧本: id, name, fault_type, inject_script, expected_root_cause,
 alert_events   告警: id, fingerprint, source, labels_json, fired_at, status(deduped/classified)
                      + M1 评审增列（2026-09-06，见 design/m1-alert-ingestion-design.md G5 与 decisions.md D-13）:
                      dedup_count, last_fired_at, resolved_at, annotations_json(原始 payload + AM fingerprint 溯源)
+                     + M2 评审增列（2026-09-07，见 design/m2-denoise-classify-design.md G4 与 decisions.md D-19）:
+                     classification_json(分类审计全量: verdict/confidence/reason/channel/model/tokens/cost_cny/classified_at;
+                     NULL=未分类；verdict 查询走 SQLite JSON1 json_extract，不建独立列/索引)
 incidents      事件: id, alert_ids[], severity, status(investigating/mitigated/closed), created_at
+                     ← M2 已建表（2026-09-07，issue 04；G5 最小集：真实告警 1:1 建档、alert_ids 单元素数组为归并预留、
+                     severity 取 labels.severity 缺省 warning；M3 以 alert_ids[0] 为调查入口锚点）
 evidence_steps 证据: id, incident_id, step_no, thought, tool, input_json, output_json,
                      output_summary, tokens, cost, latency_ms, ts        ← 100% 落库
 hypotheses     假设: id, incident_id, text, status(confirmed/rejected/active),

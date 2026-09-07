@@ -1,5 +1,5 @@
-Status: ready-for-agent
-Blocked by: 02, 03
+Status: resolved
+Blocked by: 02, 03（均已解除）
 
 # 04 落库与 incidents 建档 + 分类 API（T4 / G4/G5 定案）
 
@@ -21,13 +21,18 @@ Blocked by: 02, 03
 
 ## 验收（可机械判定，实测后回填）
 
-- [ ] 三态落库单测绿：false_positive/risk/incident 三种结果 → `classification_json` 字段齐全、status 翻 classified、未分类行保持 NULL + deduped
-- [ ] incidents 建档单测绿：incident 判定 → 1:1 建档五字段齐全；risk/false_positive 不建档
-- [ ] `POST /classify` 契约测试绿：单条 / batch pending（只处理 deduped 行）/ batch all；重复 classify 幂等（已 classified 行跳过）
-- [ ] `GET /alerts?verdict=` 与 `GET /incidents` 契约测试绿
-- [ ] 架构文档 §4 已回写（classification_json 增列 + incidents 表标注）
-- [ ] 全量 pytest + ruff 绿
+- [x] 三态落库单测绿：false_positive/risk/incident 三种结果 → `classification_json` 字段齐全（八键逐项断言）、status 翻 classified、未分类行保持 NULL + deduped（`test_classify_service.py::TestThreeVerdictPersistence`）
+- [x] incidents 建档单测绿：incident 判定 → 1:1 建档五字段齐全；risk/false_positive 不建档（`TestIncidentFiling`，含 severity 缺省 warning 边界）
+- [x] `POST /classify` 契约测试绿：单条 / batch pending（只处理 deduped 行）/ batch all；重复 classify 幂等（已 classified 行跳过，二跑全零 + 不重复建档）（`test_classify_api.py::TestClassifySingle/TestClassifyBatch`）
+- [x] `GET /alerts?verdict=` 与 `GET /incidents` 契约测试绿（`TestAlertVerdictFilter/TestIncidentsEndpoint`；NULL 行不被任何 verdict 命中）
+- [x] 架构文档 §4 已回写（classification_json 增列 + incidents 表标注；CONTEXT.md 增「双通道编排」术语）
+- [x] 全量 pytest + ruff 绿（pytest 228 passed / 4 skipped / cov 97.11%；ruff check + format --check 全过）
 
 ## Comments
 
--
+- 新增文件：`src/oncall/classify/service.py`（编排）、`src/oncall/db/views.py`（alert_body/incident_body 下沉到 db 层，解开 classify→api 循环导入，card.py 再导出保持公开面）、`tests/unit/test_classify_service.py`、`tests/unit/test_classify_api.py`
+- `ClassifyRuntime`（llm_channel + options 收敛为单一注入参数，LLMChannelOptions 先例）；未注入时 /classify 落 503，禁静默 mock
+- 加分项落地：架构守卫新增 `test_ingest_chain_has_zero_llm_dependencies`（ingest 主链路四模块禁 import oncall.classify 与 LLM SDK；app.py 组装点豁免）
+- DB 契约测试同步扩至 D-19 口径（11 列 + incidents 表），测试名更新为 d13_d19/m2_scope
+- 实录：本会话再次出现同文件并行 Edit 报成功未落盘（routes.py/create_router 签名、classify/__init__ 导出、test 文件多处），全部靠 grep 复核补齐——02/03 已知坑①持续有效
+- 剩余依赖：issue 05（统计口径）可开工，消费本票落库形态；issue 07（端到端）需用户先确认 LLM API key

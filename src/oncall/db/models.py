@@ -1,8 +1,8 @@
-"""SQLAlchemy ORM 模型（当前仅 alert_events，其余五表属 M2–M7 不越界）。"""
+"""SQLAlchemy ORM 模型（alert_events + incidents；其余四表属 M3–M7 不越界）。"""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import JSON, CheckConstraint, DateTime, Integer, String
@@ -47,9 +47,43 @@ class AlertEvent(Base):
     # 不作主指纹，仅交叉溯源，见 G5/D-13）
     annotations_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
+    # ── D-19 M2 增列 ──
+    # 分类审计全量（ClassificationResult 八键序列化；NULL = 未分类）。
+    # verdict 查询走 SQLite JSON1 json_extract（G4/R7：11 剧本规模不预优化，
+    # 不建独立 verdict 列/索引，实测成为瓶颈再议）
+    classification_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+
     @validates("fired_at")
     def _backfill_last_fired(self, key: str, value: datetime) -> datetime:
         """首次落库 last_fired_at == fired_at；显式传入值不覆盖。"""
         if self.last_fired_at is None:
             self.last_fired_at = value
         return value
+
+
+class Incident(Base):
+    """M2 最小事件集（G5 定案，decisions.md D-19）：真实告警 1:1 建档。
+
+    - `alert_ids` 是 JSON 数组（M2 恒为单元素，`alert_ids[0]` 即 primary anchor，
+      M3 取证从该行的 D-17 事件卡片开局）；数组结构为跨告警归并预留，
+      聚合本身是 M3 的 Non-goal；
+    - `severity` 取告警 `labels.severity`，缺省 warning（应用层兜底）；
+    - `status` 枚举照架构 §4 冻结（investigating/mitigated/closed），
+      M2 只产 investigating，流转归 M3/M4。
+    """
+
+    __tablename__ = "incidents"
+    __table_args__ = (
+        # 架构 §4 冻结 status 取值；CHECK 落 DB 层而非应用层（与 alert_events 同款）
+        CheckConstraint(
+            "status IN ('investigating', 'mitigated', 'closed')", name="ck_incidents_status"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alert_ids: Mapped[list[Any]] = mapped_column(JSON, nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False, default="warning")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="investigating")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
