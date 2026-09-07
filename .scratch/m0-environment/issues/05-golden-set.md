@@ -84,6 +84,29 @@ resolved 通知，属如实记录；M7 配对时该 run 的恢复以 `recovered_
 
 **待人工**：发现 1/2 的修正裁决 + ≥1 剧本抽核双签。本 issue 保持 ready-for-human。
 
+### 2026-09-07 方案 A 校准落地（发现 1/2 已修正，待人工双签）
+
+用户裁决采方案 A（口径收敛对齐实测，B 增强注入重采列为 M2+ 备选），设计与取舍见
+`docs/design/golden-set-calibration-design.md`（status=implemented）。落地内容：
+
+- **P1 修正**：3 剧本 expected_alerts 收敛到 dump 实测集合——queue-backlog 删
+  DemoTasksStuckPending；downstream-timeout 删 DemoQueueDepthHigh + DemoTasksStuckPending；
+  packet-loss 删 DemoQueueDepthHigh。expected_root_cause 改写为实测口径，并写明规则依据
+  （StuckPending = `demo_tasks_stale_pending > 5 for: 2m`，积压任务排队前进非停滞，实测未满足）
+- **P2 修正**：11 个 scenario.yaml 新增 `expected_investigation_path`（D-18 十字段契约），
+  逐剧本定制、第 1 步全部指向 inject.sh 首个可观测信号；22 个 golden 文件三字段与权威源
+  **逐字一致（脚本断言非目测）**；cache-avalanche / pool-exhaustion 的复制 path 已被替换
+- **防线固化（D-18）**：`golden_matches_scenario` 升级逐字段比对；`load_golden_tree` 增 R6
+  （timeline ⊆ expected_alerts + 标注一致性）；真实数据守卫
+  `test_golden_tree_cross_validates_against_scenarios` 进单测门禁——P1/P2 类漂移从此自动拦截
+- **实测时间线零改动**：runs/fired_at/resolved_at 未动（git diff 仅标注字段）；2 处
+  resolved_at=null 维持如实记录；发现 3（M7 禁用 scenario 标签）已写入 D-18 关联纪律与
+  校准设计 Non-goals 关联节
+- **门禁**：pytest 143 passed / 4 skipped，coverage 95.89%；ruff check + format 绿
+
+**待人工（不变）**：抽核 ≥1 剧本标注（现可对 D-18 后的口径核对）+ 双签后 DRAFT→回填确认；
+issue 置 resolved 由人执行。完成后 issue 06 前置门槛解除。
+
 ### 2026-09-06 Agent 采集完成（第二批 7 剧本）——11 剧本全部采集完毕，待人工抽核
 
 **已完成**：
