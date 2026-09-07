@@ -2,7 +2,7 @@
 
 约束 chaos/scenarios/ 整个目录（不只单个文件）：
 - 每个 scenario.yaml 都过 D-12 schema 校验器
-- 目录 ≥8 个剧本、m0-execution 六大类全覆盖、业务语义层必存在
+- 目录 ≥8 个剧本、m0-execution 七大类全覆盖（D-21 后增误报类）、业务语义层必存在
 - 无哑剧本：expected_alerts 里的每条告警必须是 deploy/prometheus/rules.yml
   里真实配置的规则名
 """
@@ -58,13 +58,14 @@ def test_catalog_has_enough_scenarios():
     )
 
 
-def test_catalog_covers_all_six_categories():
+def test_catalog_covers_all_categories():
+    """D-21（issue 06）后为七类：资源/网络/业务/负载/故障/业务语义层/误报类。"""
     specs = _load_all()
     covered = {spec.category for spec in specs.values()}  # type: ignore[attr-defined]
     missing = REQUIRED_CATEGORIES - covered
     assert not missing, (
-        f"六大类未覆盖: {sorted(missing)}。"
-        "下一步: 补对应类别剧本（资源/网络/业务/负载/故障/业务语义层）。"
+        f"七类未全覆盖: {sorted(missing)}。"
+        "下一步: 补对应类别剧本（资源/网络/业务/负载/故障/业务语义层/误报类）。"
     )
 
 

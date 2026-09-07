@@ -1,17 +1,15 @@
 """故障剧本与黄金评测集的 schema 校验器（D-12 冻结契约，M7 评测台 runner 的输入）。
 
 字段契约（docs/design/m0-environment-design.md 评审落定，改动须过 decisions.md）：
-- scenario.yaml 九字段：name / fault_type / category / inject / inject_method /
-  cleanup / expected_alerts / expected_root_cause / expected_remediation
-- D-18 扩展为十字段：新增 expected_investigation_path（排查路径唯一权威源，
-  golden 逐字复制——修复 P2 跨剧本复用的结构缺口）
+- scenario.yaml 十字段：D-12 九字段 + D-18 expected_investigation_path（排查路径
+  唯一权威源，golden 逐字复制）
 - 黄金集：scenario + runs（单文件 ≥1；目录树层强制 dev≥2 + holdout≥1 = 每剧本 ×3）
   + root_cause + investigation_path + remediation
+- D-21：timeline 条目可选 classification（incident 缺省 / false_positive）
 
-设计取舍：
-- 用 pydantic 严格校验，`extra="forbid"`——多打/拼错字段名直接报错，防止脏数据流进 M7
-- category / inject_method 用枚举冻结取值；fault_type 自由文本（CPU 飙高/慢 SQL/…）
-- 本模块纯离线（不 import httpx/openai），pytest-socket 断网环境可直接单测
+设计取舍：pydantic 严格校验 + `extra="forbid"`（多打/拼错字段名直接报错，防脏数据
+流进 M7）；category / inject_method 枚举冻结取值，fault_type 自由文本；纯离线
+（不 import httpx/openai），pytest-socket 断网环境可直接单测。
 """
 
 from __future__ import annotations
@@ -26,7 +24,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
-ScenarioCategory = Literal["资源类", "网络类", "业务类", "负载类", "故障类", "业务语义层"]
+# D-21（issue 06）：扩第七类「误报类」——误报剧本（无真实业务故障）此前六类无处安放
+ScenarioCategory = Literal["资源类", "网络类", "业务类", "负载类", "故障类", "业务语义层", "误报类"]
 InjectMethod = Literal["pumba", "custom-script", "load-generator"]
 
 
@@ -72,6 +71,8 @@ class AlertEvent(BaseModel):
     labels: dict[str, str] = Field(default_factory=dict)
     fired_at: datetime
     resolved_at: datetime | None = None
+    # D-21（issue 06）：可选标注 incident/false_positive，缺省 incident 向后兼容既有 11 剧本
+    classification: Literal["incident", "false_positive"] = "incident"
 
     @model_validator(mode="after")
     def _resolved_not_before_fired(self) -> AlertEvent:
@@ -119,9 +120,7 @@ class GoldenSet(BaseModel):
 
 def golden_matches_scenario(golden: GoldenSet, spec: ScenarioSpec) -> bool:
     """黄金集与剧本的对应关系校验（D-18：三标注字段逐字一致，防标注漂移）。
-
-    P2 教训：investigation_path 此前无权威源，跨剧本复制无人拦截——
-    现在三个标注字段都必须与 scenario.yaml 的 expected_* 逐字相同。
+    P2 教训：investigation_path 曾无权威源致跨剧本复制无人拦截，现三字段必须与 expected_* 逐字相同。
     """
     return (
         golden.scenario == spec.name
@@ -165,11 +164,22 @@ DEV_MIN_RUNS = 2
 HOLDOUT_MIN_RUNS = 1
 _SPLITS = ("dev", "holdout")
 
+# D-21 过渡豁免（issue 06）：holdout 同步延至 M7 前、M2 期间禁看不动。清单内 slug 允许
+# dev 单边（跳过 R2 + R3-holdout/R4，R1/R3-dev/R6 照跑）；显式常量而非放宽 R2 为警告
+# ——M7 同步 holdout 后清空本清单，成对硬约束原样恢复（M7 待办）。
+HOLDOUT_SYNC_PENDING: frozenset[str] = frozenset({"false-positive-flap"})
+
 
 def _cross_check_slug(slug: str, tree: dict[str, dict[str, GoldenSet]], spec: ScenarioSpec) -> None:
-    """R6 单剧本交叉校验：timeline ⊆ expected_alerts + 三标注字段逐字一致（D-18）。"""
+    """R6：timeline ⊆ expected_alerts + 三标注逐字一致（D-18）。
+    只校验实际存在的 split（D-21 过渡豁免路径下 holdout 可能缺席）。
+    """
     timeline_alerts = {
-        a.alert_name for split in _SPLITS for r in tree[split][slug].runs for a in r.alert_timeline
+        a.alert_name
+        for split in _SPLITS
+        if slug in tree[split]
+        for r in tree[split][slug].runs
+        for a in r.alert_timeline
     }
     unobserved = timeline_alerts - set(spec.expected_alerts)
     if unobserved:
@@ -184,7 +194,7 @@ def _cross_check_slug(slug: str, tree: dict[str, dict[str, GoldenSet]], spec: Sc
             "（root_cause/investigation_path/remediation 三字段同源纪律）"
         )
         raise ScenarioValidationError(msg)
-    if not golden_matches_scenario(tree["holdout"][slug], spec):
+    if slug in tree["holdout"] and not golden_matches_scenario(tree["holdout"][slug], spec):
         msg = f"{slug}: holdout 集标注与 scenario.yaml expected_* 不逐字一致（双集标注必须同步）"
         raise ScenarioValidationError(msg)
 
@@ -202,12 +212,17 @@ def _load_specs(scenarios_dir: Path) -> dict[str, ScenarioSpec]:
     return specs
 
 
+def _check_dev_min_runs(slug: str, dev: GoldenSet) -> None:
+    """R3-dev 单侧检查（过渡豁免路径：holdout 尚未同步时仍强制 dev ≥2）。"""
+    if len(dev.runs) < DEV_MIN_RUNS:
+        msg = f"{slug}: dev 集仅 {len(dev.runs)} run，下限 {DEV_MIN_RUNS}（口径 dev2+holdout1）"
+        raise ScenarioValidationError(msg)
+
+
 def _check_pair_rules(slug: str, dev: GoldenSet, holdout: GoldenSet) -> None:
     """R2 成对 / R3 run 数下限 / R4 防复制（dev+holdout 双集结构规则）。"""
+    _check_dev_min_runs(slug, dev)
     dev_runs, holdout_runs = dev.runs, holdout.runs
-    if len(dev_runs) < DEV_MIN_RUNS:  # R3
-        msg = f"{slug}: dev 集仅 {len(dev_runs)} run，下限 {DEV_MIN_RUNS}（口径 dev2+holdout1）"
-        raise ScenarioValidationError(msg)
     if len(holdout_runs) < HOLDOUT_MIN_RUNS:  # R3
         msg = f"{slug}: holdout 集仅 {len(holdout_runs)} run，下限 {HOLDOUT_MIN_RUNS}"
         raise ScenarioValidationError(msg)
@@ -230,6 +245,7 @@ def load_golden_tree(
     目录树层规则（schema 层只管单文件）：
     R1 文件名（去扩展名）必须等于 golden.scenario 字段
     R2 成对：slug 必须同时出现在 dev 与 holdout
+      （D-21 豁免：HOLDOUT_SYNC_PENDING 内 slug 允许 dev 单边，M7 同步后清空恢复）
     R3 run 数下限：dev ≥2，holdout ≥1（每剧本 ×3 = 2+1 的拆分口径）
     R4 防复制：同一 slug 在 dev 与 holdout 不得出现相同 started_at 的 run
     R5 空树允许（分批采集中），已存在的文件必须合法
@@ -260,11 +276,19 @@ def load_golden_tree(
     for slug in sorted(slugs):
         in_dev, in_holdout = slug in tree["dev"], slug in tree["holdout"]
         if in_dev != in_holdout:  # R2
-            missing = "holdout" if in_dev else "dev"
-            msg = f"{slug}: 黄金集双集不成对——{missing} 目录缺少 {slug}.yaml"
-            raise ScenarioValidationError(msg)
+            if in_dev and slug in HOLDOUT_SYNC_PENDING:
+                pass  # D-21 过渡豁免：holdout 同步延至 M7 前，dev 单边放行
+            else:
+                missing = "holdout" if in_dev else "dev"
+                msg = f"{slug}: 黄金集双集不成对——{missing} 目录缺少 {slug}.yaml"
+                raise ScenarioValidationError(msg)
 
-        _check_pair_rules(slug, tree["dev"][slug], tree["holdout"][slug])
+        if in_dev and in_holdout:
+            _check_pair_rules(slug, tree["dev"][slug], tree["holdout"][slug])
+        elif in_dev:
+            # 过渡豁免路径（或仅 dev 存在的豁免清单 slug）：R3-dev 照跑，
+            # R3-holdout / R4 无 holdout 可比，随 M7 同步恢复
+            _check_dev_min_runs(slug, tree["dev"][slug])
 
         if scenarios_dir is not None:  # R6
             spec = specs.get(slug)

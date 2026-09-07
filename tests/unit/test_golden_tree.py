@@ -22,6 +22,7 @@ import yaml
 from oncall.scenarios import (
     DEV_MIN_RUNS,
     HOLDOUT_MIN_RUNS,
+    HOLDOUT_SYNC_PENDING,
     ScenarioValidationError,
     load_golden_tree,
 )
@@ -261,3 +262,97 @@ class TestR6CrossValidation:
             holdout={"slow-sql": ["2026-09-06T12:00:00Z"]},
         )
         assert load_golden_tree(root)["dev"]["slow-sql"].scenario == "slow-sql"
+
+
+class TestHoldoutSyncPending:
+    """D-21 过渡豁免（issue 06）：HOLDOUT_SYNC_PENDING 清单内 slug 允许 dev 单边存在。
+
+    背景：R2 要求 dev+holdout 成对，但 D-21 把 false-positive-flap 的 holdout 同步
+    延至 M7 前（M2 期间 holdout 禁看不动）——不豁免则 dev 单边新增直接炸 R2。
+    纪律：豁免走**显式常量清单**而非把 R2 放宽为警告；只放宽 R2 + R3-holdout/R4
+    （无 holdout 可比），R1 / R3-dev / R6 全部照跑；M7 同步 holdout 后清空清单，
+    硬约束原样恢复。
+    """
+
+    def test_pending_slug_contains_false_positive_flap(self):
+        assert "false-positive-flap" in HOLDOUT_SYNC_PENDING
+
+    def test_pending_slug_dev_only_passes(self, tmp_path):
+        root = build_tree(
+            tmp_path,
+            dev={
+                "false-positive-flap": [
+                    "2026-09-06T10:00:00Z",
+                    "2026-09-06T11:00:00Z",
+                ]
+            },
+            holdout={},
+        )
+        tree = load_golden_tree(root)
+        assert len(tree["dev"]["false-positive-flap"].runs) == DEV_MIN_RUNS
+
+    def test_pending_slug_still_needs_two_dev_runs(self, tmp_path):
+        # 豁免不清空 R3-dev：dev 下限照跑
+        root = build_tree(
+            tmp_path, dev={"false-positive-flap": ["2026-09-06T10:00:00Z"]}, holdout={}
+        )
+        with pytest.raises(ScenarioValidationError) as exc:
+            load_golden_tree(root)
+        assert "dev" in str(exc.value) and "false-positive-flap" in str(exc.value)
+
+    def test_non_pending_slug_dev_only_still_rejected(self, tmp_path):
+        # 豁免范围锁定清单：清单外剧本的 R2 行为不变
+        root = build_tree(
+            tmp_path, dev={"slow-sql": ["2026-09-06T10:00:00Z", "2026-09-06T11:00:00Z"]}, holdout={}
+        )
+        with pytest.raises(ScenarioValidationError) as exc:
+            load_golden_tree(root)
+        assert "slow-sql" in str(exc.value)
+
+    def test_pending_slug_after_holdout_sync_pair_rules_apply(self, tmp_path):
+        # M7 同步 holdout 后（dev+holdout 齐了）：R4 防复制等成对规则恢复原样
+        root = build_tree(
+            tmp_path,
+            dev={
+                "false-positive-flap": [
+                    "2026-09-06T10:00:00Z",
+                    "2026-09-06T11:00:00Z",
+                ]
+            },
+            holdout={"false-positive-flap": ["2026-09-06T10:00:00Z"]},  # 复制 dev run
+        )
+        with pytest.raises(ScenarioValidationError) as exc:
+            load_golden_tree(root)
+        assert "started_at" in str(exc.value)
+
+    def test_pending_slug_r6_cross_check_still_runs(self, tmp_path):
+        # 豁免不清空 R6：timeline ⊆ expected_alerts 照常拦截（P1 防线不掉线）
+        root = build_tree_with_specs(
+            tmp_path,
+            dev={
+                "false-positive-flap": [
+                    "2026-09-06T10:00:00Z",
+                    "2026-09-06T11:00:00Z",
+                ]
+            },
+            holdout={},
+            alerts={"false-positive-flap": ["DemoQueueDepthHigh"]},  # 与 timeline 不相交
+        )
+        with pytest.raises(ScenarioValidationError) as exc:
+            load_golden_tree(root, scenarios_dir=tmp_path / "scenarios")
+        assert "DemoTasksHighLatency" in str(exc.value)
+
+    def test_pending_slug_r6_passes_when_consistent(self, tmp_path):
+        root = build_tree_with_specs(
+            tmp_path,
+            dev={
+                "false-positive-flap": [
+                    "2026-09-06T10:00:00Z",
+                    "2026-09-06T11:00:00Z",
+                ]
+            },
+            holdout={},
+            alerts={"false-positive-flap": ["DemoTasksHighLatency"]},
+        )
+        tree = load_golden_tree(root, scenarios_dir=tmp_path / "scenarios")
+        assert tree["dev"]["false-positive-flap"].scenario == "false-positive-flap"

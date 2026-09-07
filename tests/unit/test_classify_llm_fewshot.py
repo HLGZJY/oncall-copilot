@@ -35,15 +35,14 @@ def test_real_dev_pool_excludes_all_validation_scenarios() -> None:
 
 
 def test_real_dev_pool_sample_shape() -> None:
-    """每态 K=2–3：当前只有 incident 缺省类 → 取前 K 条，卡片/结论字段齐全。"""
+    """每态 K=2–3：验证剧本被排除后，真实池仅剩 incident 缺省类 → 取前 K 条。"""
     samples = load_few_shot_samples(REAL_DEV_DIR)
 
     assert 0 < len(samples) <= fewshot.DEFAULT_PER_CLASS_K
     for s in samples:
-        assert s.verdict == "incident"  # 06 未落地前全为缺省标注
-        assert s.reason  # reason 来自 golden root_cause
-        assert "labels" in s.alert_card["alert"]
-        assert "fired_at" in s.alert_card["alert"]
+        # false-positive-flap（06 落地，唯一 false_positive 源）在排除名单内，
+        # 故真实池全为缺省 incident 标注
+        assert s.verdict == "incident"
 
 
 def make_tmp_dev(tmp_path: Path, scenarios: dict[str, dict]) -> Path:

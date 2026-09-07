@@ -278,3 +278,47 @@ class TestAnnotationConsistency:
             make_golden(path_override=["查队列深度（从别的剧本抄来的）"])
         )
         assert not golden_matches_scenario(golden, spec)
+
+
+class TestAlertEventClassification:
+    """D-21（issue 06）：timeline 条目可选字段 classification（incident 缺省 / false_positive）。
+
+    extra="forbid" 下不扩模型连既有校验都会拒新文件——本组测试是扩模型的复现红测试。
+    """
+
+    def test_explicit_false_positive_accepted(self, tmp_path):
+        data = make_golden()
+        data["runs"][0]["alert_timeline"][0]["classification"] = "false_positive"
+        f = tmp_path / "golden.yaml"
+        f.write_text(yaml_dump(data), encoding="utf-8")
+        gs = load_golden_set_file(f)
+        assert gs.runs[0].alert_timeline[0].classification == "false_positive"
+
+    def test_missing_classification_defaults_to_incident(self):
+        # 向后兼容：既有 11 剧本 golden 零改动，缺省语义 = incident
+        gs = GoldenSet.model_validate(make_golden())
+        assert gs.runs[0].alert_timeline[0].classification == "incident"
+
+    def test_classification_incident_accepted(self, tmp_path):
+        data = make_golden()
+        data["runs"][0]["alert_timeline"][0]["classification"] = "incident"
+        f = tmp_path / "golden.yaml"
+        f.write_text(yaml_dump(data), encoding="utf-8")
+        gs = load_golden_set_file(f)
+        assert gs.runs[0].alert_timeline[0].classification == "incident"
+
+    def test_unknown_classification_value_rejected(self):
+        # 取值冻结在 D-21 两态；拼错/扩值都要在 M0 拦截
+        bad = make_golden()
+        bad["runs"][0]["alert_timeline"][0]["classification"] = "maybe_fp"
+        with pytest.raises(ValidationError) as exc:
+            GoldenSet.model_validate(bad)
+        assert "classification" in str(exc.value)
+
+
+class TestFalsePositiveCategory:
+    """D-21（issue 06）：ScenarioCategory 扩第七类「误报类」——误报剧本无处安放的红测试。"""
+
+    def test_false_positive_category_accepted(self):
+        spec = ScenarioSpec.model_validate(make_scenario(category="误报类"))
+        assert spec.category == "误报类"

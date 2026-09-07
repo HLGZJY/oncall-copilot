@@ -3,6 +3,7 @@
 from oncall.scenarios.schema import (
     DEV_MIN_RUNS,
     HOLDOUT_MIN_RUNS,
+    HOLDOUT_SYNC_PENDING,
     AlertEvent,
     GoldenRun,
     GoldenSet,
@@ -18,6 +19,7 @@ from oncall.scenarios.schema import (
 __all__ = [
     "DEV_MIN_RUNS",
     "HOLDOUT_MIN_RUNS",
+    "HOLDOUT_SYNC_PENDING",
     "AlertEvent",
     "GoldenRun",
     "GoldenSet",
