@@ -2,7 +2,7 @@
 title: "CONTEXT.md — 共享语言"
 summary: "OnCall Copilot 的术语唯一权威：命名（代码/issue/测试/文档）一律用这里的词，新术语当场入表"
 status: active
-updated: 2026-09-06
+updated: 2026-09-07
 read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增概念时
 ---
 
@@ -46,6 +46,7 @@ read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增
 | 回退 / Fallback | 假设被推翻或工具失败时，换方向重新取证的策略 | 重试（重试是同一动作再来一次） |
 | RAG | 检索增强生成。本项目**只用于召回历史事故**，是 Agent 的一个工具，不是架构 | 知识库（作为架构时） |
 | 规则通道 / Rule Channel | M2 双通道中的确定性谓词预筛层：每条规则只判「误报直判」或「放行」，**不判真实**；能写成确定性谓词的才进规则通道 | 规则引擎、预分类、过滤器 |
+| 规则名 / Rule Name | 规则通道中每条谓词规则的稳定标识，统计报告按其归因（落 `reason` 前缀 `[name]`）；初始集：`resolved_only_ghost`（resolved-only 幽灵通知）/ `maintenance_window`（维护窗口/静默期）/ `stale_replay`（重放/迟到期已失效） | 规则 ID、规则编号 |
 | LLM 通道 / LLM Channel | M2 双通道中的 few-shot 兜底分类层：只处理规则未决的告警，结构化输出 `{verdict, confidence, reason}`，置信度低于阈值落风险 | 大模型分类、智能分类 |
 | L0–L5 成熟度 | Agent 自主性分级（白鳝分级）。本项目目标水位 **L3 受控自动执行** | — |
 
