@@ -45,10 +45,10 @@ read_when: 实现 M3（自主调查循环）与 M4（证据链）时
 ```json
 {
   "incident_id": "...",
-  "steps": [{"step": 1, "thought": "...", "tool": "query_metrics",
-             "input": {}, "output_summary": "...", "ts": "...", "tokens": 0, "cost": 0.0}],
+  "steps": [{"step_no": 1, "thought": "...", "tool": "query_metrics",
+             "input_json": {}, "output_summary": "...", "ts": "...", "tokens": 0, "cost_cny": 0.0}],
   "hypotheses": [{"text": "...", "status": "confirmed|rejected",
-                  "supporting": [2,5], "against": [4]}],
+                  "supporting_steps": [2,5], "against_steps": [4]}],
   "conclusion": "...", "confidence": 0.82
 }
 ```

@@ -9,8 +9,9 @@ M4 换读表）/ D-19（status 枚举冻结；status ≠ investigating 仍允许
 - POST /investigate：200 报告键集合精确匹配 / incident 不存在 404 /
   extra=forbid 422 / mock Planner 脚本驱动端到端（steps/hypotheses 序列化）
 - 开局锚点：卡片以 alert_ids[0] 组装、时间锚 last_fired_at（D-17）
-- GET /investigations/{id}：有报告 200 / 无报告 404 / escalated 可查 /
-  同 incident 重复调查覆盖旧报告
+- GET /investigations/{id}（M4-T3 换读三表，D-25 注册表退役 / D-35 形状权威）：
+  有报告 200（与 POST 内存导出逐字段 roundtrip 一致）/ 无报告 404 /
+  escalated 可查 / 同 incident 重复调查读到最新一次 / running 行 404
 - 语义：status ≠ investigating 仍允许调查；缺省组件 503；非预期异常 500 结构化
 本票零 LLM 真实调用、零 HTTP 外呼：harness 组件全 mock（照 T6 先例），
 API 测试 inproc_asgi（进程内 ASGI，无真实网络 IO，A1 断网不适用）。
@@ -23,11 +24,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import StaticPool, create_engine
+from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session
 
 from oncall.api.investigation import InvestigationDeps
 from oncall.db import AlertEvent, Incident, create_tables
+from oncall.db.models import Investigation
 from oncall.harness.loop import LoopComponents
 from oncall.harness.permission import PermissionGate
 from oncall.harness.planner import MockPlanner, PlannerDecision
@@ -358,7 +360,7 @@ class TestGetInvestigationReport:
         assert body["stop_reason"] and "15" in body["stop_reason"]
 
     def test_repeated_investigation_overwrites_previous_report(self):
-        """D-25 容量防御：同 incident 重复调查覆盖旧报告（注册表只保最近一次）。"""
+        """D-25/D-31 容量语义：同 incident 重复调查覆盖旧行，GET 读到最新一次。"""
         client, engine = make_client(
             [
                 tool_decision(),
@@ -375,3 +377,51 @@ class TestGetInvestigationReport:
         assert second.status_code == 200
         assert second.json()["conclusion"] == "第二次收束"  # 新会话重跑 → 覆盖旧报告
         assert client.get(f"/investigations/{incident_id}").json() == second.json()
+
+    def test_roundtrip_matches_in_memory_export_field_by_field(self):
+        """M4-T3 核心回归锚：写库 → GET 读库报告与内存导出（build_report 口径）逐字段一致。
+
+        含 opening_card（随行留存的 generated_at 不漂移）与 confidence（读库
+        侧按 hypotheses 行内 status 重算，口径同内存）。
+        """
+        script = [
+            tool_decision(thought="假设一：消费者延迟"),
+            tool_decision(thought="假设二：CPU 饱和"),
+            conclusion_decision("CPU 饱和定案"),
+        ]
+        components = make_components(
+            MockPlanner(script=script),
+            judge_script=[VerifierVerdict(supported=False, reason="证据不支持")],
+            judge_default=VerifierVerdict(supported=True, reason="支持"),
+        )
+        client, engine = _client_with_components(components)
+        incident_id, _ = _seed_incident(engine)
+        posted = client.post("/investigate", json={"incident_id": incident_id})
+        assert posted.status_code == 200
+
+        resp = client.get(f"/investigations/{incident_id}")
+
+        assert resp.status_code == 200
+        got = resp.json()
+        assert set(got) == REPORT_KEYS
+        for key in posted.json():  # 逐字段对账，失败时报出键名
+            assert got[key] == posted.json()[key], f"roundtrip 字段不一致: {key}"
+        assert got["confidence"] == 0.5  # 一 rejected + 一 confirmed（读库重算）
+        # 数据来源钉死为库：opening_card 与 investigations 行留存逐键一致
+        with Session(engine) as session:
+            row = session.scalar(
+                select(Investigation).where(Investigation.incident_id == incident_id)
+            )
+            assert row.opening_card_json == got["opening_card"]
+
+    def test_running_investigation_row_returns_404(self):
+        """行存在但 status=running（调查未收尾，终态字段未落）→ 404，语义同无记录。"""
+        client, engine = make_client([conclusion_decision("x")])
+        incident_id, _ = _seed_incident(engine)
+        with Session(engine) as session:
+            session.add(Investigation(incident_id=incident_id, status="running"))
+            session.commit()
+
+        resp = client.get(f"/investigations/{incident_id}")
+
+        assert resp.status_code == 404

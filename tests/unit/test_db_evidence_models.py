@@ -37,6 +37,9 @@ INVESTIGATION_COLUMNS = {
     "total_cost_cny",
     "started_at",
     "finished_at",
+    # M4-T3 增列（D-35/D-31）：opening_card 随行留存（JSON 列，读路径零重建，
+    # D-17 卡内 generated_at 是构建时刻时间戳——读时重建必然漂移）
+    "opening_card_json",
 }
 
 # 架构 §4 冻结列（逐字段照抄，D-25：文档是权威）

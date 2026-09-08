@@ -140,6 +140,10 @@ class Investigation(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # M4-T3（D-35/D-31）：opening_card 随行留存（D-17 卡片 JSON，收尾后写）——
+    # 读路径零重建（卡内 generated_at 是构建时刻时间戳，读时重建必然漂移，
+    # roundtrip 逐字段对账不成立）；D-19 不受影响（incidents 表不扩列）
+    opening_card_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
 class EvidenceStep(Base):
