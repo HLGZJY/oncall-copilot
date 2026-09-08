@@ -2,7 +2,7 @@
 title: "CONTEXT.md — 共享语言"
 summary: "OnCall Copilot 的术语唯一权威：命名（代码/issue/测试/文档）一律用这里的词，新术语当场入表"
 status: active
-updated: 2026-09-08
+updated: 2026-09-09
 read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增概念时
 ---
 
@@ -76,6 +76,11 @@ read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增
 | Runbook / SOP | Markdown 定义的**处置**流程文档，被解析成可执行工具 | 剧本（剧本是故障场景） |
 | 故障剧本 / Chaos Scenario | 预定义的**故障注入场景**（CPU 飚高/慢 SQL 等），含注入脚本 + 触发告警 + 预标注根因 | Runbook、用例 |
 | 混沌注入 / Chaos Injection | 主动注入故障以产生真实告警与数据（Pumba / Chaos Mesh） | 故障模拟 |
+| 处置提案 / Remediation Proposal | 一次待人工确认的处置请求：`execute_action` 干跑产出的 pending 记录，`dry_run_json` 锁定**将被批准执行的具体命令清单**（人工批准的对象，D-39）；状态流转 pending→approved/rejected→executing→recovered/failed/rolled_back/escalated（D-40/D-46） | 处置工单、action 请求、修复任务 |
+| 干跑预览 / Dry-run Preview | 干跑（第一道闸门）的**产出物**：渲染出的「将执行的命令 + 影响面」，即 `proposal.dry_run_json`——人工在确认门批准的就是这份预览，不是模型的意图描述 | 预演结果、试运行输出 |
+| 命令白名单 / Command Allowlist | 系统层**唯一可执行面**（硬规 3 落地）：动作类型 → 受限命令模板 + 参数白名单正则的静态原子操作表（docker/mysql 两族，D-42）；runbook 的 action 只可引用表内原子操作，命令字符串永不来自 runbook 正文或模型自由文本 | 命令黑名单（本项目明确不用）、可执行命令集 |
+| 恢复判据 / Recovery Criterion | runbook `verification` 字段**显式声明**的恢复判定：`{promql, condition, window_s}`（D-44）——处置作者在无压力时预写的「回到告警未触发稳态」的判据，恢复验证机械断言的对象 | 验证阈值、健康标准、恢复检查 |
+| 受控执行 / Controlled Execution | 第三道闸门：白名单校验后的命令清单在 demo 容器内确定性执行（subprocess 列表参数、禁 shell、30s 超时），执行阶段**永不回读模型输出**（D-39/D-42） | 自动执行、命令执行 |
 
 ## 四、评测
 

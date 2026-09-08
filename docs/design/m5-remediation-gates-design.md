@@ -2,7 +2,7 @@
 title: "M5 处置与恢复验证（四道闸门）：设计与开发计划"
 summary: "把 D-23 冻结的 execute_action L2 stub 实装为四道闸门处置管线：runbook（Markdown）解析为可执行动作 → 干跑（打印命令+影响面）→ 人工确认门（API 层拦截）→ 受控执行（命令白名单 + demo 容器内）→ 恢复验证（回查指标，未恢复自动回滚或转人工）；处置全程留痕并并入证据链报告；G1–G10 开放点评审与 T1–T8 拆票"
 source: docs/prd.md §4/§7-M5 + docs/architecture/architecture.md §3.2/§3.3/§4/§5/§7 + docs/design/decisions.md D-16/17/19/22/23/25/28/30-38 + docs/conventions/security-guardrails.md（四道闸门）+ docs/conventions/quality-gates.md（C3/C4/C6/A6）+ docs/design/m4-evidence-chain-design.md（设计文档形制模板）+ .scratch/m3-investigation-loop/issues/08（execute_action stub 边界注记）+ chaos/scenarios/01-cpu-spike/02-slow-sql（cleanup 语义 = runbook 处置内容来源）+ 评审标准来源（见「评审依据」R1–R5）
-status: draft
+status: reviewed
 updated: 2026-09-09
 read_when: 评审 M5 方案时；进入 M5 开发前；被问「写操作怎么保证可控/处置怎么自动化」时
 ---
@@ -13,9 +13,10 @@ read_when: 评审 M5 方案时；进入 M5 开发前；被问「写操作怎么�
 
 `draft`（草案，讨论中）→ `reviewed`（评审通过，可拆票）→ `implemented`（已落地，验收回填）→ `superseded`（被后续设计取代，注明替代文档链接）
 
-- **当前状态**：`draft`（2026-09-09 草案完成，G 表待用户逐条拍板；**评审定案前不拆票、不登记 decisions**）
-- **评审人 / 评审日期**：（评审通过后回填）
-- **关联 issue**：`.scratch/m5-remediation-gates/`（spec.md + issues/01–08 与 T1–T8 一一对应，归评审后动作）
+- **当前状态**：`reviewed`（2026-09-09 G1–G10 评审定案——用户逐条拍板，全部采纳推荐默认解；定案已登记 `decisions.md` D-39–D-48，新术语已入 `CONTEXT.md`）
+  - 上一状态 `draft`（2026-09-09 草案完成，提交 `5532286`；docs/README 索引行随草案新增 `888ae37`）
+- **评审人 / 评审日期**：用户逐条拍板（G1–G10 全部采纳推荐默认解），2026-09-09；评审依据由 AI 检索官方标准提供（R1–R5，含 URL 与取用日期），用户保留推翻权（推翻须回退 `draft` 并重开对应 issue）
+- **关联 issue**：`.scratch/m5-remediation-gates/`（spec.md + issues/01–08，与 T1–T8 一一对应；2026-09-09 拆票完成，T1–T7 全部 `ready-for-agent`，T8 `ready-for-agent` 附 demo 栈就绪门槛）
 - **设计期口径**：本票零写码、零建表、零真实调用（mock-only LLM 纪律照 M2–M4 先例——处置管线是确定性系统行为，不经 LLM 裁决，故无真实 API 调用票；真实端到端需活 demo 栈，属环境门槛非 key 门槛，见 T8）
 
 ## 目标
@@ -145,7 +146,7 @@ read_when: 评审 M5 方案时；进入 M5 开发前；被问「写操作怎么�
 
 ## 开放设计点（评审 grill）
 
-> G1–G10 交用户逐条拍板（用户保留推翻权，推翻须回退对应设计节重议）；定案后登记 decisions.md D-39 起 + 拆票。外部标准来源见节末「评审依据」R1–R5（URL + 取用日期 2026-09-09）。
+> G1–G10 已于 2026-09-09 **评审定案**：用户逐条拍板全部采纳推荐默认解，登记 `decisions.md` **D-39–D-48**（每条 D 的「理由」栏为该 G 行核心理由的决策形态，ADR 三判据逐条评估——无全中项，均留快速索引层不升级 ADR）。外部标准来源见节末「评审依据」R1–R5（URL + 取用日期 2026-09-09）。
 
 | # | 开放点 | 推荐默认解 | 理由 | 依据 |
 |---|---|---|---|---|
@@ -207,11 +208,11 @@ read_when: 评审 M5 方案时；进入 M5 开发前；被问「写操作怎么�
 | 7 | execute_action 注入接缝破坏既有测试 | 未注入时维持原 stub 语义（error 兜底）——既有 mock 测试零回退；新增干跑路径只走显式注入（T2 断言） |
 | 8 | 处置超时拖慢 confirm API | confirm 同步执行预算：执行 ≤30s/步 × 动作步数 + 验证窗口 ≤60s，2 剧本动作 ≤3 步 → 单次 confirm ≤ ~2.5min < 5min 总预算；超时走转人工出口不悬挂 |
 
-## 评审后动作（G 表定案后执行，本票不预落盘）
+## 评审后动作（2026-09-09 已执行完毕）
 
-1. G 表定案说明回填 + 本文件翻 `reviewed`（评审人/日期回填）
-2. `docs/design/decisions.md` 登记 **D-39+**（G1→D-39 起逐条；先 grep 确认无占用；逐条过 ADR 三判据，表格行格式照现有表续行）
-3. `CONTEXT.md` 新术语入表（处置提案 / 命令白名单 / 干跑预览 等，含 `_Avoid_`）
-4. `.scratch/m5-remediation-gates/` 拆票：`spec.md`（任务序列表 + M5/M6/M7 边界节）+ `issues/01–08` 与 T1–T8 一一对应；验收可机械判定的标 `ready-for-agent`，涉 G 取舍的按定案说明；T8 附 demo 栈门槛注明
-5. 架构文档回写随实现票执行并预告：§4 七表 → 八表（G8 定案时）、§3.3 权限分级 L2 语义注记（G3）、§5 时序「匹配 SOP → 干跑 → 人工确认(M5)」兑现核对（G1）
-6. `docs/README.md` 索引行随草案已新增（本文件条目）
+1. ✅ G 表定案说明回填 + 本文件翻 `reviewed`（评审人/日期回填）
+2. ✅ `docs/design/decisions.md` 登记 **D-39–D-48**（G1→D-39 起逐条；登记前已 grep 确认无占用；逐条过 ADR 三判据，表格行格式照现有表续行）
+3. ✅ `CONTEXT.md` 新术语入表（处置提案 / 命令白名单 / 干跑预览 / 恢复判据 等，含 `_Avoid_`）
+4. ✅ `.scratch/m5-remediation-gates/` 拆票：`spec.md`（任务序列表 + M5/M6/M7 边界节）+ `issues/01–08` 与 T1–T8 一一对应；验收可机械判定的标 `ready-for-agent`，T8 附 demo 栈就绪门槛注明
+5. ⏳ 架构文档回写随实现票执行并预告：§4 七表 → 八表（随 T3 落库票回写）、§3.3 权限分级 L2 语义注记（随 T2 干跑/授权判定票回写）、§5 时序「匹配 SOP → 干跑 → 人工确认(M5)」兑现核对（随 T8 收尾核对）
+6. ✅ `docs/README.md` 索引行刷新为 reviewed 状态（条目 2026-09-09 草案时已新增，本定案刷新）
