@@ -112,6 +112,11 @@ alert_events   告警: id, fingerprint, source, labels_json, fired_at, status(de
 incidents      事件: id, alert_ids[], severity, status(investigating/mitigated/closed), created_at
                      ← M2 已建表（2026-09-07，issue 04；G5 最小集：真实告警 1:1 建档、alert_ids 单元素数组为归并预留、
                      severity 取 labels.severity 缺省 warning；M3 以 alert_ids[0] 为调查入口锚点）
+investigations 调查: id, incident_id(FK, 唯一约束=重复调查覆盖旧行), status(running/concluded/
+                     escalated/aborted), stop_reason, conclusion, failure_mode, step_count,
+                     total_tokens, total_cost_cny, started_at, finished_at, opening_card_json
+                     ← M4 增补第七表（2026-09-08，G2/D-31；超六表规划的显式偏差已评审；会话级字段
+                     落此表，incident 1:1；多轮评测历史归 eval_runs 另表不混）
 evidence_steps 证据: id, incident_id, step_no, thought, tool, input_json, output_json,
                      output_summary, tokens, cost, latency_ms, ts        ← 100% 落库
 hypotheses     假设: id, incident_id, text, status(confirmed/rejected/active),

@@ -2,7 +2,7 @@
 title: "M4 证据链与过程存储：设计与开发计划"
 summary: "把 M3 内存契约（EvidenceStep/Hypothesis/InvestigationSession）落库为 ORM 三表（investigations + evidence_steps + hypotheses）：步进即写 100% 落库、事故-证据一对多、导出 JSON/Markdown 报告；承接 issue 08 两个结构缺口修复（opening 视图 + 工具 schema 可见）与真实实测重跑；G1–G9 开放点评审与 T1–T8 拆票"
 source: docs/prd.md §4/§7-M4 + docs/architecture/architecture.md §3.3/§4 + docs/architecture/agent-loop-design.md + docs/design/m3-investigation-loop-design.md（形制模板与 M3/M4 边界定案）+ docs/design/decisions.md D-17/19/22/23/25/28/29 + .scratch/m3-investigation-loop/issues/08-e2e-validation.md（两结构缺口注记）+ 评审标准来源（见「评审依据」R1–R5）
-status: reviewed
+status: implemented
 updated: 2026-09-08
 read_when: 评审 M4 方案时；进入 M4 开发前；被问「证据链怎么落库/怎么保证可审计」时
 ---
@@ -13,8 +13,9 @@ read_when: 评审 M4 方案时；进入 M4 开发前；被问「证据链怎么�
 
 `draft`（草案，讨论中）→ `reviewed`（评审通过，可拆票）→ `implemented`（已落地，验收回填）→ `superseded`（被后续设计取代，注明替代文档链接）
 
-- **当前状态**：`reviewed`（2026-09-08 G1–G9 评审定案——用户逐条拍板，全部采纳推荐默认解；定案已登记 `decisions.md` D-30–D-38，新术语已入 `CONTEXT.md`）
-  - 上一状态 `draft`（2026-09-08 草案完成，提交 `a9feeef`）；无更早状态
+- **当前状态**：`implemented`（2026-09-08 T1–T8 全部落位；验收标准节已回填实测——真实实测 Top-1 0/3 如实记录，归因与复议结论见 `.scratch/m4-evidence-chain/issues/08-real-rerun-closeout.md` Comments）
+  - 上一状态 `reviewed`（2026-09-08 G1–G9 评审定案——用户逐条拍板，全部采纳推荐默认解；定案已登记 `decisions.md` D-30–D-38，新术语已入 `CONTEXT.md`）
+  - 更早状态 `draft`（2026-09-08 草案完成，提交 `a9feeef`）
 - **评审人 / 评审日期**：用户逐条拍板（G1–G9 全部采纳推荐默认解），2026-09-08；评审依据由 AI 检索官方标准提供（R1–R5，含 URL 与取用日期），用户保留推翻权（推翻须回退 `draft` 并重开对应 issue）
 - **关联 issue**：`.scratch/m4-evidence-chain/`（spec.md + issues/01–08，与 T1–T8 一一对应；2026-09-08 拆票完成，T1–T8 全部 `ready-for-agent`）
 - **设计期口径**：本票零写码、零建表、零真实调用（LLM 全 mock 口径照 M2/M3 先例）；真实调用留实现票 T8，开工前需用户确认 key（照 M3 issue 08 先例）
@@ -93,15 +94,15 @@ read_when: 评审 M4 方案时；进入 M4 开发前；被问「证据链怎么�
 
 > 可实测、可判定；实测后回填打勾，不得虚构（实现票 T8 完成时回填本节）。设计期全 mock，成本口径引用 M3 实测值（真实轮 ≈¥0.008/6 次、步数 2–5，来源 M3 issue 08 注记 2026-09-08）。
 
-- [ ] **一次完整调查 100% 落库**（PRD §4 过程可信口径）：mock 3 剧本（`cpu-spike` / `slow-sql` / `queue-backlog`，D-29 沿用）经 `POST /investigate` 走至 conclusion 后，`evidence_steps` 行数 = 会话步数、`hypotheses` 行数 = 假设池大小、`investigations` 一行且终态一致——单测机械断言
-- [ ] **任意一步可回溯原始工具输出**：对落库后任一 `evidence_steps` 行，`output_json` 与该步 `ToolResult`（status/data/meta）逐字段一致；escalated/aborted 会话的已取证部分同样可查（D-28）——单测机械断言
-- [ ] **导出 JSON 与 agent-loop-design 数据形状比对一致**（按 G6 定案口径）：键集合契约测试精确守卫（照 D-17 `test_alert_card_api.py` 先例）
-- [ ] **Markdown 导出可用**：`report.md` 返回 200 + `text/markdown`，包含全部步/假设/结论/终态——契约测试
-- [ ] **M3/M4 边界不破**：`EvidenceStep` / `Hypothesis` / `InvestigationSession` 契约字段与 M3 一致（import + 键集合断言），指针接口不变（D-25）
-- [ ] **缺口① opening 视图**：`_decide_with_retry` view 含 `opening` 键（D-17 精简投影，键集合断言）；context_manager 组装 + loop.py 瘦身后 C6 断言全绿
-- [ ] **缺口② schema 可见性**（按 G9 定案）：system prompt 含六工具入参 schema 摘要（或 tool_help 工具注册）；系统提示 ≤1500 tokens 预算断言不破
-- [ ] **重跑真实实测**（T8，需用户确认 key）：3 剧本真实调用回填步数/耗时/成本/结论，Top-1 结果如实记录（口径复核归 M7）；参数级失败率对比 M3 基线记录
-- [ ] **全量门禁只增不减**：pytest + ruff check + ruff format --check 绿，coverage ≥80%（基线 **479 passed / 7 skipped / 98.05%**，随新增测试自然上涨）
+- [x] **一次完整调查 100% 落库**（PRD §4 过程可信口径）：mock 3 剧本（`cpu-spike` / `slow-sql` / `queue-backlog`，D-29 沿用）经 `POST /investigate` 走至 conclusion 后，`evidence_steps` 行数 = 会话步数、`hypotheses` 行数 = 假设池大小、`investigations` 一行且终态一致——单测机械断言（`tests/e2e/test_m4_acceptance_persistence.py`）
+- [x] **任意一步可回溯原始工具输出**：对落库后任一 `evidence_steps` 行，`output_json` 与该步 `ToolResult`（status/data/meta）逐字段一致；escalated/aborted 会话的已取证部分同样可查（D-28）——单测机械断言（同上 + `test_db_evidence_repo` / `test_investigation_api`）
+- [x] **导出 JSON 与 agent-loop-design 数据形状比对一致**（按 G6 定案口径）：键集合契约测试精确守卫（照 D-17 `test_alert_card_api.py` 先例）；agent-loop-design 示例键名已随 T3 对齐冻结契约（落位终核 ✅）
+- [x] **Markdown 导出可用**：`report.md` 返回 200 + `text/markdown`，包含全部步/假设/结论/终态——契约测试
+- [x] **M3/M4 边界不破**：`EvidenceStep` / `Hypothesis` / `InvestigationSession` 契约字段与 M3 一致（import + 键集合断言），指针接口不变（D-25）
+- [x] **缺口① opening 视图**：`_decide_with_retry` view 含 `opening` 键（D-17 精简投影，键集合断言）；context_manager 组装 + loop.py 瘦身后 C6 断言全绿
+- [x] **缺口② schema 可见性**（按 G9 定案）：system prompt 含六工具入参 schema 摘要（`context_manager.build_system_prompt` 派生自注册契约）；系统提示 ≤1500 tokens 预算断言不破
+- [x] **重跑真实实测**（T8，用户已确认 key 并授权预算，2026-09-08）：3 剧本 × 2 轮真实调用（qwen3.7-flash，合计 ≈¥0.0111 / 40 次调用，远低于 ¥0.5 上限）；**Top-1 如实记录 0/3（未改善，口径复核归 M7）**——改善项：参数级失败率自 M3 主失败降至 6 次中仅 1 次出现（D-38 schema 摘要兑现）；未改善项：同参绕圈成主失败（6 次中 4 次熔断，get_topology×3 / query_kb×1）+ 1 次收束退行文本，归因 = 模型决策质量非结构缺口，已交用户复议（2026-09-08 拍板按票面收尾，Top-1/绕圈留 M7 复核口径）；逐剧本明细与 usage 落 issue 08 Comments + `.scratch/tmp/m4-08-llm-e2e-report.json`（不进版本库）；**落库链路全程生效：6 次真实调查 100% 落库断言 + opening_card 留存 + GET 出口 roundtrip 全绿**（`tests/integration/test_m4_real_rerun.py`，花钱开关 `ONCALL_RUN_LLM_E2E=1`）
+- [x] **全量门禁只增不减**：pytest + ruff check + ruff format --check 绿，coverage ≥80%——终态 **541 passed / 10 skipped / coverage 97.88%**（基线 541/7/98%；+3 skipped = T8 真实轮 harness 花钱开关默认跳过，passed + skipped 总量 551 ≥ 548 不减，coverage 总体口径 97.88% ≥ 80% 达标）
 
 ## 依赖
 
@@ -177,5 +178,5 @@ read_when: 评审 M4 方案时；进入 M4 开发前；被问「证据链怎么�
 2. ✅ `docs/design/decisions.md` 登记 **D-30–D-38**（逐条过 ADR 三判据自检：难以逆转 / 无上下文会意外 / 真实权衡；**注意表格行格式**照现有表续行）
 3. ✅ `CONTEXT.md` 新术语入表（调查记录 / 证据仓库，含 `_Avoid_`）
 4. ✅ `.scratch/m4-evidence-chain/` 拆票完成（spec.md + issues/01–08 与 T1–T8 一一对应；T1–T8 全部 `ready-for-agent`，T8 附 key 门槛；标签约定照 issue-tracker.md）
-5. ⬜ 架构文档回写随实现票执行：§4 六表 → 七表（G2/D-31）；§3.3 tool_help 措辞按意图兑现注记（G9/D-38）；agent-loop-design 示例键名修订（G6/D-35，随 T3 提交交用户复核）
+5. ✅ 架构文档回写已随实现票执行（2026-09-08 T8 终核补落）：§4 六表 → 七表（G2/D-31，`investigations` 条目入架构清单）；§3.3 tool_help 措辞按意图兑现注记（G9/D-38）；agent-loop-design 示例键名修订（G6/D-35，T3 已带，落位终核 ✅）
 6. ✅ `docs/README.md` 索引行已随草案新增（M4 设计文档条目）
