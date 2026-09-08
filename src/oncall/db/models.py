@@ -1,11 +1,21 @@
-"""SQLAlchemy ORM 模型（alert_events + incidents；其余四表属 M3–M7 不越界）。"""
+"""SQLAlchemy ORM 模型（alert_events + incidents + M4 证据链三表；scenarios/eval_runs 不越界）。"""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, Integer, String
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, validates
 
 
@@ -87,3 +97,101 @@ class Incident(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
+
+
+class Investigation(Base):
+    """调查记录（D-31 第七表）：一次调查的会话级落库，incident 1:1 覆盖语义。
+
+    会话级字段（终态/stop_reason/结论/failure_mode/步数/成本合计）落此——
+    从证据表推导是伪权威（D-31），成本会话级汇总不做步级摊销（D-34，G5 定案）；
+    `incident_id` 唯一约束 = 同 incident 重复调查覆盖旧行，对齐现进程内注册表
+    覆盖语义（D-31）；历史多次调查归 M7 `eval_runs` 另表，不与此混表。
+    字段契约 = docs/design/m4-evidence-chain-design.md §数据模型变更（D-30/D-31/D-32）。
+    """
+
+    __tablename__ = "investigations"
+    __table_args__ = (
+        # D-28 会话状态四态；CHECK 落 DB 层而非应用层（照 ck_alert_events_status 先例）
+        CheckConstraint(
+            "status IN ('running', 'concluded', 'escalated', 'aborted')",
+            name="ck_investigations_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 一对多「一」端锚 incidents.id（D-19 五字段冻结，本表不反向扩列）；
+    # 唯一约束即重复调查覆盖锚点（D-31）
+    incident_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("incidents.id"), nullable=False, unique=True
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="running")
+    # D-28 终止出口描述，终态时落（running 态为 NULL）
+    stop_reason: Mapped[str | None] = mapped_column(Text)
+    # Planner `{conclusion}` 收束结论（D-22 协议出口一）
+    conclusion: Mapped[str | None] = mapped_column(Text)
+    # D-28 failure_mode 六值机械归类（tool_error/plan_error/timeout/hallucination/
+    # no_signal/premature_stop），M7 评测矩阵列直接来源；running 态为 NULL
+    failure_mode: Mapped[str | None] = mapped_column(String(32))
+    step_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 会话级汇总（D-34）= Planner usage_log + Verifier 裁决 usage（D-28 收尾结构 total 两字段）
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_cost_cny: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EvidenceStep(Base):
+    """证据步（架构 §4 冻结列）：调查中一步 thought/tool/input/output 的有序记录单元。
+
+    `output_json`（原始输出，可回溯）与 `output_summary`（进上下文的摘要）双存
+    （Anthropic："不能只存摘要"，架构 §4 设计约束）；input 侧只落 `input_json`
+    全文，不设 `input_summary` 列（D-32）；(incident_id, step_no) 组合唯一——
+    步号在单次调查内连续（内存契约 record_step 连续性校验的 DB 层兜底）。
+    """
+
+    __tablename__ = "evidence_steps"
+    __table_args__ = (
+        UniqueConstraint("incident_id", "step_no", name="uq_evidence_steps_incident_step"),
+    )
+
+    # ── 架构 §4 冻结列（字段名与顺序逐字段照抄，D-25）──
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(Integer, ForeignKey("incidents.id"), nullable=False)
+    step_no: Mapped[int] = mapped_column(Integer, nullable=False)  # 步号从 1 起连续递增
+    thought: Mapped[str] = mapped_column(Text, nullable=False)
+    tool: Mapped[str] = mapped_column(String(64), nullable=False)
+    # D-32：input 只落全文；output 双存照架构 §4 冻结
+    input_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    output_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    output_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    # 步级 tokens/cost 维持工具埋点现语义（D-34，不做步级摊销）；列名 `cost` 照 §4 冻结
+    tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    cost: Mapped[float] = mapped_column(Float, nullable=False)
+    latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Hypothesis(Base):
+    """假设（架构 §4 冻结列）：confirmed/rejected/active 三态（D-26 证伪导向）。
+
+    `supporting_steps`/`against_steps` 为证据步号数组（JSON，SQLite 方言），
+    引用存在性校验归 Verifier 规则层（D-26），DB 层不做跨表步号校验。
+    """
+
+    __tablename__ = "hypotheses"
+    __table_args__ = (
+        # 三态冻结（对齐 M3 HypothesisStatus）；CHECK 落 DB 层（同款先例）
+        CheckConstraint(
+            "status IN ('confirmed', 'rejected', 'active')", name="ck_hypotheses_status"
+        ),
+    )
+
+    # ── 架构 §4 冻结列（字段名与顺序逐字段照抄，D-25）──
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    incident_id: Mapped[int] = mapped_column(Integer, ForeignKey("incidents.id"), nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    supporting_steps: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)
+    against_steps: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)

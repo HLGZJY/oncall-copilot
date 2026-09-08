@@ -78,9 +78,17 @@ class TestFieldContract:
         cols = {c["name"] for c in inspect(engine).get_columns("alert_events")}
         assert cols == D13_COLUMNS
 
-    def test_tables_match_m2_scope(self, engine):
-        """六表中 M1 建 alert_events，M2（issue 04）按 D-19 增建 incidents，其余不越界。"""
-        assert sorted(inspect(engine).get_table_names()) == ["alert_events", "incidents"]
+    def test_tables_match_m4_scope(self, engine):
+        """M1 建 alert_events，M2（issue 04）按 D-19 增建 incidents，
+        M4（m4 issue 01）按 D-31 增建 investigations/evidence_steps/hypotheses；
+        scenarios/eval_runs 不越界（前沿断言随建表里程碑演进，M2 先例）。"""
+        assert sorted(inspect(engine).get_table_names()) == [
+            "alert_events",
+            "evidence_steps",
+            "hypotheses",
+            "incidents",
+            "investigations",
+        ]
 
     def test_fingerprint_is_indexed_and_unique(self, engine):
         indexes = inspect(engine).get_indexes("alert_events")
