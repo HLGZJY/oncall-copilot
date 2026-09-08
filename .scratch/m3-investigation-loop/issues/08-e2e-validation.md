@@ -23,3 +23,12 @@ Blocked by: 07
 - [ ] 真实 LLM 实测回填：步数/耗时/成本/结论 + usage 明细（¥0.5 上限比对）
 - [ ] 设计文档验收节全部打勾、翻 `implemented`；CONTEXT/decisions 核对完成
 - [ ] 全量 pytest + ruff 双检绿；coverage ≥80%
+
+## Comments（T8 执行期注记）
+
+### 2026-09-08 开工门槛与拆分方案
+
+- **key 门槛已解除**：用户确认 `ONCALL_LLM_*` env 可用（`~/.oncall-llm-env` 三件套）并授权真实调用（预估单次 ≈¥0.02，上限 ¥0.5）。A/B 两段连续执行。
+- **`infra/llm.py` 拆分方案（票面要求先注记再动手）**：`llm.py` 现 283 行贴 C6，真实 Planner client 落新文件 `src/oncall/infra/llm_planner.py`（`OpenAIPlannerClient` + usage 留存 + prompt 组装，模块级模板常量照 `classify/llm/prompt.py` 先例）；复用 `llm.py` 的 `LLMClientConfig`/`LLMConfigError`/`LLMUsage`/`ChatClient`/`JSON_MODE`/`DISABLE_THINKING`/`_usage_of`（同包 import，不复制第二份）；pyproject C4+C5 `ignore_imports` 扩 `oncall.infra.llm_planner -> openai`。`llm.py` 本体零改动（283 行不动）。
+- **异常族语义**（踩坑⑨对齐）：SDK 畸形输出（空/非 JSON/契约不过）→ `PlannerOutputError`（loop 重试 ≤2）；`APITimeoutError` → `PlannerTimeoutError`（不重试）；其余 `OpenAIError` → 基类 `PlannerError`（不重试，冒泡到 API 层 500 结构化兜底）——与 M2 `LLMClassifierError`「非畸形不重试」语义一致。infra import `oncall.harness.planner` 异常族方向合法（C3 只限 harness → 业务模块）。
+- **B 段取证面**：真实 Planner 消费的证据仍取 golden timeline 同源 Fetcher 替身（D-18；只含 alert_timeline/labels/时间窗，**不含 root_cause/investigation_path/remediation**——避免把答案喂给被评模型）；判分器（规则匹配级：关键实体 + 动作词）与 mock 夹具共享落 `tests/golden_support.py`，A/B 两段同一判分口径。
