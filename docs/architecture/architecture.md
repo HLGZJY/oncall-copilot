@@ -93,7 +93,11 @@ def investigation_loop(session: InvestigationSession) -> InvestigationResult:
 
 1. `MAX_STEPS = 15`（硬编码于 Harness，不在 prompt 里）
 2. 单工具执行超时 30s、重试 ≤ 2 次、失败归类 `tool_error`
-3. 权限三层（照搬 Claude Code）：L0 只读自动放行 / L1 写操作需 API 确认 / L2 高危（五级操作分级第 5 级）永远禁止
+3. 权限三层（照搬 Claude Code）：L0 只读自动放行 / L1 写操作需 API 确认 / L2 处置高危（五级操作分级第 5 级）。
+   L2 语义（M5 issue 02 定稿，D-39/D-41/裁决①）：**循环内 L2 execute_action = 干跑请求**——只读渲染
+   「将执行的命令清单 + 影响面」并建 pending 处置提案（零 demo 副作用），故闸门对干跑请求放行到干跑
+   handler 出预览；**真实执行批准只存在于确认门/服务层（issue 03/04/05），不经 loop 工具**。命令字符串
+   永不来自 runbook 正文或模型自由文本（D-42/C4），以白名单原子操作 + 参数模板形态渲染。
 
 ### 3.5 与多 Agent 的关系（面试必问）
 

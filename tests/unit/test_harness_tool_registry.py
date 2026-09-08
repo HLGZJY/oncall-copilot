@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import BaseModel
 
 from oncall.harness.permission import PermissionLevel
+from oncall.harness.tools.execute import build_execute_action_handler
 from oncall.harness.tools.registry import (
     DEFAULT_TIMEOUT_SECONDS,
     MAX_RETRIES,
@@ -26,8 +28,11 @@ from oncall.harness.tools.registry import (
     register_six_tools,
 )
 from oncall.harness.tools.schemas import QueryKbInput, QueryMetricsInput
+from oncall.remediation.runbook import load_runbook_library  # 组装点测试可 import（C3 豁免）
 
 FIXED_NOW = datetime(2026, 9, 8, 12, 0, 0, tzinfo=UTC)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+RUNBOOKS_DIR = REPO_ROOT / "remediation" / "runbooks"
 VALID_ARGS: dict[str, Any] = {
     "promql": "up",
     "start": "2026-09-08T00:00:00Z",
@@ -233,9 +238,31 @@ class TestStubs:
         assert execution.result.status is ToolStatus.UNAVAILABLE
         assert execution.result.meta["reason"] == "M6 未建库"
 
-    def test_execute_action_stub_is_l2_defense_in_depth(self) -> None:
+    def test_execute_action_stub_when_not_assembled(self) -> None:
+        """registry 未注入 execute_action → 回退 stub error（处置执行器未装配纵深防御，裁决①）。"""
         execution = self.make_full_registry().execute(
             "execute_action", {"action": "restart", "params": {"pod": "api-0"}}
         )
         assert execution.result.status is ToolStatus.ERROR
-        assert "四道闸门" in str(execution.result.meta["reason"])
+        assert "未装配" in str(execution.result.meta["reason"])
+
+    def test_execute_action_dryrun_injected_via_registry(self) -> None:
+        """M5 组装注入干跑 handler（registry handlers 注入面）→ ok + 干跑预览 + proposal_id。"""
+        library = load_runbook_library(RUNBOOKS_DIR)
+        handler = build_execute_action_handler(
+            runbook_loader=library.get,
+            proposal_creator=lambda payload: f"pending-{payload['action_id']}",
+        )
+        registry = ToolRegistry(now=lambda: FIXED_NOW)
+        handlers = {name: query_kb_stub for name in FORENSIC_TOOLS}
+        handlers["execute_action"] = handler
+        register_six_tools(registry, handlers)
+        execution = registry.execute(
+            "execute_action",
+            {"action": "cpu-spike/stop-stress-and-restore-cpuset"},
+        )
+        assert execution.result.status is ToolStatus.OK
+        data = execution.result.data
+        assert data["proposal_id"] == "pending-stop-stress-and-restore-cpuset"
+        assert data["dry_run_preview"]["runbook_slug"] == "cpu-spike"
+        assert data["dry_run_preview"]["commands"]  # 命令清单非空

@@ -126,12 +126,22 @@ def query_kb_stub(args: BaseModel, *, timeout_seconds: float) -> ToolResult:
 
 
 def execute_action_stub(args: BaseModel, *, timeout_seconds: float) -> ToolResult:
-    """execute_action stub（D-23）：L2 由 PermissionGate 拦在执行前；此为纵深防御兜底。"""
+    """execute_action stub（M5 实装后回退）：处置干跑执行器未装配时的纵深防御兜底。
+
+    M5 issue 02 起 execute_action 实装为干跑 handler（`execute.build_execute_action_handler`，
+    注入 runbook 库 + proposal 存根接缝，经 registry handlers 注入面组装）；**未注入时维持
+    本 stub error 语义**（既有测试零回退）。本 stub 是未装配路径的 defense-in-depth：
+    即便 L2 gate 放行到干跑，缺少执行器装配也绝不可能落到真实写操作。
+    """
     return ToolResult(
         tool="execute_action",
         status=ToolStatus.ERROR,
         data=None,
-        meta={"reason": "L2 写操作须经 PermissionGate 与四道闸门（M5 实装）"},
+        meta={
+            "reason": (
+                "execute_action 处置执行器未装配（注入 build_execute_action_handler 后可用）"
+            )
+        },
     )
 
 

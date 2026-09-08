@@ -10,6 +10,7 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 # 夹具（与 test_harness_loop.py 同法；tests/unit 非包，无法跨文件 import）
 # ---------------------------------------------------------------------------
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -19,7 +20,7 @@ from oncall.harness.loop import (
     normalize_hypothesis_text,
     run_investigation,
 )
-from oncall.harness.permission import PermissionGate
+from oncall.harness.permission import PermissionDecision, PermissionGate
 from oncall.harness.planner import MockPlanner, PlannerDecision
 from oncall.harness.session import (
     InvestigationSession,
@@ -84,6 +85,35 @@ def make_components(
         verifier=Verifier(judge=MockVerifierJudge(script=judge_script, default=judge_default)),
         now=now,
     )
+
+
+def make_dryrun_execute_handler(*, proposal_calls: list[str]) -> Any:
+    """假干跑 execute handler：返回干跑预览 + proposal_id，绝不触 demo（裁决① 语义）。"""
+
+    def handler(args: Any, *, timeout_seconds: float) -> ToolResult:
+        del timeout_seconds
+        action = getattr(args, "action", "runbook/action")
+        proposal_calls.append("pending-loop-dryrun")
+        return ToolResult(
+            tool="execute_action",
+            status=ToolStatus.OK,
+            data={
+                "dry_run_preview": {
+                    "runbook_slug": action.split("/")[0],
+                    "action_id": action.split("/")[1],
+                    "commands": [],
+                    "impact": "干跑预览：仅渲染命令清单，未执行任何 demo 写",
+                },
+                "proposal_id": "pending-loop-dryrun",
+            },
+            meta={
+                "runbook_slug": action.split("/")[0],
+                "action_id": action.split("/")[1],
+                "status": "pending",
+            },
+        )
+
+    return handler
 
 
 def tool_decision(
@@ -185,8 +215,41 @@ class TestHypothesisDedupAndFallback:
         fallback = [n for n in notices if "重试耗尽" in n]
         assert fallback and "query_metrics" in fallback[0]
 
-    def test_fallback_on_gate_denial_feeds_summary(self) -> None:
-        """L2 拒绝（留审计记录）→ Fallback 摘要喂回，调查不中断。"""
+    def test_l2_execute_dryrun_recorded_no_demo_write(self) -> None:
+        """裁决①：循环内 L2 execute_action = 干跑请求 → 放行落证据步（预览 + proposal_id）。"""
+        planner = MockPlanner(
+            script=[
+                tool_decision(thought="先取证一步"),
+                PlannerDecision.model_validate(
+                    {
+                        "thought": "重启服务前先干跑",
+                        "next_tool": "execute_action",
+                        "args": {"action": "cpu-spike/stop-stress-and-restore-cpuset"},
+                    }
+                ),
+                conclusion_decision("确认干跑预览后交服务层执行"),
+            ]
+        )
+        proposal_calls: list[str] = []
+        handlers = dict(DEFAULT_HANDLERS)
+        handlers["execute_action"] = make_dryrun_execute_handler(proposal_calls=proposal_calls)
+        session = make_session()
+        components = make_components(planner, handlers=handlers)
+        result = run_investigation(session, components)
+        assert result.status is SessionStatus.CONCLUDED
+        # execute_action 干跑步已 100% 落证据（G4）：output_json.data 含 preview + proposal_id
+        ea_steps = [s for s in session.steps if s.tool == "execute_action"]
+        assert len(ea_steps) == 1
+        data = ea_steps[0].output_json["data"]
+        assert data["proposal_id"] == "pending-loop-dryrun"
+        assert data["dry_run_preview"]["runbook_slug"] == "cpu-spike"
+        # L2 干跑放行落审计（ALLOWED），且 proposal 存根只被调一次、绝无任何 demo 执行面
+        audit = components.gate.audit_log
+        assert audit[-1].decision.value == "allowed"
+        assert proposal_calls == ["pending-loop-dryrun"]
+
+    def test_fallback_on_l2_judge_denial_feeds_summary(self) -> None:
+        """L2 处置授权判定器若拒绝（服务层注入）→ Fallback 摘要喂回，调查不中断（机制④ 保留）。"""
         planner = MockPlanner(
             script=[
                 tool_decision(thought="先取证一步"),
@@ -200,8 +263,26 @@ class TestHypothesisDedupAndFallback:
                 conclusion_decision("放弃写操作"),
             ]
         )
+
+        # mock 判定器：无 approved 提案 → 拒绝（模拟服务层真实授权器）
+        def denying_judge(tool: str, args: Mapping[str, Any]) -> tuple[Any, str]:
+            del tool, args
+            return PermissionDecision.DENIED, "无 approved 处置提案，拒绝在循环内执行"
+
         session = make_session()
-        components = make_components(planner)
+        registry = ToolRegistry(now=lambda: _TS)
+        register_six_tools(registry, DEFAULT_HANDLERS)
+        components = LoopComponents(
+            planner=planner,
+            registry=registry,
+            gate=PermissionGate(now=lambda: _TS, l2_judge=denying_judge),
+            verifier=Verifier(
+                judge=MockVerifierJudge(
+                    script=None, default=VerifierVerdict(supported=True, reason="支持")
+                )
+            ),
+            now=lambda: _TS,
+        )
         result = run_investigation(session, components)
         assert result.status is SessionStatus.CONCLUDED
         assert result.step_count == 1  # 被拒动作不落证据步（仅取证步落链）
