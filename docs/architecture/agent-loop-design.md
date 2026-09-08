@@ -30,7 +30,7 @@ read_when: 实现 M3（自主调查循环）与 M4（证据链）时
 
 ## 每轮协议
 
-- system prompt（角色/工具说明/输出协议）→ 取证据摘要 → 模型出 `{thought, next_tool, args}` 或 `{conclusion}`
+- system prompt（角色/工具说明/输出协议）→ 取证据摘要 → 模型出 `{thought, next_tool, args}` 或 `{conclusion}`；注记（D-38）：原设想的「tool_help 查详情」通道按意图由 system prompt 内六工具入参 schema 摘要兑现（不补第 7 个工具，D-23 冻结面不变）
 - 结构化输出解析容错；工具异常重试 2 次；单轮超时保护
 - **分层调用降成本**（OpenDerisk 实践）：推理模型做 plan，便宜模型做简单取证
 

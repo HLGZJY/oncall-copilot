@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by:
 
 # 06 缺口② 工具 schema 摘要进 system prompt（T6 / G9；D-38）
@@ -20,8 +20,20 @@ Blocked by:
 
 ## 验收（可机械判定）
 
-- [ ] pytest 绿：system prompt 含六工具 schema 摘要（逐工具存在性断言，schema 与 registry 参数契约一致）
-- [ ] pytest 绿：系统提示 tokens ≤1500 预算断言（含 opening 后的完整 prompt）
-- [ ] pytest 绿：既有 mock e2e 3/3 命中不回退
-- [ ] 架构 §3.3 措辞注记落盘（一行 diff）
-- [ ] 全量门禁不回退 + ruff 双检 + A2 守卫全绿
+- [x] pytest 绿：system prompt 含六工具 schema 摘要（逐工具存在性断言，schema 与 registry 参数契约一致）
+- [x] pytest 绿：系统提示 tokens ≤1500 预算断言（含 opening 后的完整 prompt）
+- [x] pytest 绿：既有 mock e2e 3/3 命中不回退
+- [x] 架构 §3.3 措辞注记落盘（一行 diff）
+- [x] 全量门禁不回退 + ruff 双检 + A2 守卫全绿
+
+## 落位注记（2026-09-08）
+
+- 选 **同源派生** 路线（票面首选）：`context_manager.py` 新增 `render_tool_schema`——
+  从 `spec.schema.model_fields` 派生必填/可选/值域（Ge/Le/MinLen/MaxLen/Literal），
+  与运行时校验同一数据源，零手抄、零漂移；模板标题落模块级常量 `TOOL_SCHEMA_HEADER`（A2 合规）
+- tokens 实测（默认口径 2 字符≈1 token）：拼装前 235 → schema 摘要 +205 → 拼装后 439 / 上限 1500
+  （票面估 +≈250，实测 +205）；≤1500 断言随票钉死
+- 对齐测试从 `model_fields` 独立推导期望（不复用生产渲染函数），关键值域逐字钉死：
+  `start、end` 必填、`limit?(≥1,≤100)`、`direction?(backward|forward)`、`top_k?(≥1,≤10)`
+- 架构文档「每轮协议」节一行注记回写（D-38 兑现 tool_help 意图）
+- 全量门禁：537 passed / 7 skipped（基线只增不减），coverage 98%，ruff check / format 全绿

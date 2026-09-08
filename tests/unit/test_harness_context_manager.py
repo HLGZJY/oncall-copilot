@@ -189,6 +189,51 @@ class TestSystemPrompt:
         prompt = build_system_prompt()
         assert estimate_tokens(prompt) <= SYSTEM_PROMPT_TOKEN_LIMIT
 
+    def test_schema_summary_within_1500_after_d38(self) -> None:
+        """D-38：附六工具入参 schema 摘要后整体仍 ≤1500 tokens（预算断言随票钉死）。"""
+        prompt = build_system_prompt()
+        assert estimate_tokens(prompt) <= SYSTEM_PROMPT_TOKEN_LIMIT
+        assert "## 工具入参 schema" in prompt
+
+    def test_schema_aligns_with_registry_contracts(self) -> None:
+        """schema 摘要与 registry 注册契约逐字对齐（本票核心质量线，漂移即红）。
+
+        归属断言从 `spec.schema.model_fields`（运行时校验的同一数据源）独立
+        推导，不复用生产渲染函数——必填/可选任一漂移测试即红。
+        """
+        prompt = build_system_prompt()
+        lines = prompt.split("\n")
+        for spec in TOOL_SPECS:
+            fields = spec.schema.model_fields
+            required = [n for n, f in fields.items() if f.is_required()]
+            optional = [n for n, f in fields.items() if not f.is_required()]
+            head_idx = next(
+                i for i, line in enumerate(lines) if line.startswith(f"- {spec.name}：必填 ")
+            )
+            head_line = lines[head_idx]
+            for name in required:
+                assert name in head_line, f"{spec.name} 必填参数 {name} 缺失"
+            if optional:
+                opt_line = lines[head_idx + 1]
+                assert opt_line.startswith("  可选 ")
+                for name in optional:
+                    assert f"{name}?" in opt_line, f"{spec.name} 可选参数 {name} 未带 ? 标记"
+                    assert name not in head_line, f"{spec.name} 可选参数 {name} 误入必填段"
+
+    def test_schema_pins_key_constraints(self) -> None:
+        """关键约束值域钉进 prompt：query_metrics 必填 start/end、search_logs limit≤100。"""
+        prompt = build_system_prompt()
+        assert "start、end" in prompt  # query_metrics 必填时间窗（M3 issue 08 注记②主修复）
+        assert "limit?(≥1,≤100)" in prompt
+        assert "direction?(backward|forward)" in prompt
+        assert "top_k?(≥1,≤10)" in prompt
+
+    def test_schema_optional_marked_and_described(self) -> None:
+        """可选参数带 ? 标记；schema 内 description 随契约透出（派生非手抄）。"""
+        prompt = build_system_prompt()
+        assert "step?" in prompt
+        assert "缺省由实现侧定" in prompt
+
     def test_lists_all_six_tools_from_specs(self) -> None:
         """工具一览从 TOOL_SPECS 生成——六工具名与一句话描述全在（勿手抄第二份）。"""
         prompt = build_system_prompt()
