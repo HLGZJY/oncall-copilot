@@ -27,7 +27,7 @@ M3 自主根因调查循环（自研 ReAct）。**权威设计**：`docs/design/
 | 01 | 调查会话契约与 Planner 接缝（session 契约 + MockPlanner + 异常族） | T1 | — | resolved（2026-09-08） |
 | 02 | ToolRegistry 与权限分级（+ 两 stub 工具） | T2 | 01 | resolved（2026-09-08） |
 | 03 | 取证工具实现（metrics/logs/anomaly/topology 四态） | T3 | 02 | resolved（2026-09-08） |
-| 04 | ContextManager（摘要模板/预算/证伪假设移出） | T4 | 01 | ready-for-agent |
+| 04 | ContextManager（摘要模板/预算/证伪假设移出） | T4 | 01 | resolved（2026-09-08） |
 | 05 | Verifier（规则层 + LLM 裁决接缝） | T5 | 03, 04 | ready-for-agent |
 | 06 | 主循环 Loop（终止三出口/失败六值归类/防绕圈四机制） | T6 | 01–05 | ready-for-agent |
 | 07 | 调查入口 API（POST /investigate + GET 报告） | T7 | 06 | ready-for-agent |
@@ -43,6 +43,6 @@ M3 自主根因调查循环（自研 ReAct）。**权威设计**：`docs/design/
 
 - [x] G1–G9 评审拍板（2026-09-08 全部采纳推荐解；D-22–D-29 已登记 `decisions.md`，新术语已入 `CONTEXT.md`，设计文档翻 `reviewed`）
 - [x] M3-A 内核：01 [x] · 02 [x]（2026-09-08）· 03 [x]（2026-09-08，M3-A 三票收官）
-- [ ] M3-B 编排：04–06
+- [ ] M3-B 编排：04 [x]（2026-09-08）· 05 · 06
 - [ ] M3-C 入口与验收：07 → 08（真实 LLM 调用需用户确认 key）
 - [ ] 设计文档翻 `implemented`（T8 实测回填后）
