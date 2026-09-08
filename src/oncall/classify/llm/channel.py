@@ -70,10 +70,17 @@ FALLBACK_CONFIDENCE = 0.0
 FALLBACK_REASON_OUTPUT_ERROR = "LLM 通道失败：输出畸形，重试 2 次后仍无法解析，落风险兜底"
 FALLBACK_REASON_TIMEOUT = "LLM 通道失败：调用超时（30s），落风险兜底"
 
-#: mock 单价快照（CNY / 千 tokens，取价 2026-09-07，估算法口径；实测回填 issue 07）
+#: 单价表（CNY / 千 tokens）：(输入, 输出)；未登记模型构造期即失败（禁静默 0 成本）
 MOCK_MODEL_PRICING_CNY_PER_1K: dict[str, tuple[float, float]] = {
     "deepseek-chat": (0.002, 0.003),
     "qwen-plus": (0.0008, 0.002),
+    # qwen3.7-flash（百炼 华北2 北京，非思考模式，输入 ≤32K 档）：
+    # 0.24 / 0.96 元每百万 tokens → 0.00024 / 0.00096 元每千 tokens。
+    # 取价 2026-09-08，来源 PAI「Token 服务计费说明」官方定价表，并与国际站
+    # USD 牌价（0.000033 / 0.000132 USD 每千 tokens）按当日汇率折算自洽；
+    # 与开发者社区文章的 0.2 / 0.8 口径存在差异（后者疑为折后价），取官方定价表。
+    # issue 07 实测期处新用户免费额度内，实际计费 ¥0（见设计文档验收节）。
+    "qwen3.7-flash": (0.00024, 0.00096),
 }
 
 

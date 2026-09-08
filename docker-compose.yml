@@ -138,6 +138,14 @@ services:
     environment:
       ONCALL_DATABASE_URL: sqlite:////app/repo/oncall.db
       ONCALL_PROMETHEUS_URL: http://prometheus:9090
+      # 真实 LLM 通道（M2 issue 07）：三件套默认空 = 未配置，/classify 落 503，
+      # ingest 主链路零 LLM 依赖不受影响（R6）。key 只从宿主环境注入，**不入库**：
+      #   source ~/.oncall-llm-env && docker-compose up -d oncall
+      # dev_dir 指容器内的仓库挂载点（few-shot 只读 dev 集，holdout 禁看）
+      ONCALL_LLM_API_KEY: ${ONCALL_LLM_API_KEY:-}
+      ONCALL_LLM_BASE_URL: ${ONCALL_LLM_BASE_URL:-}
+      ONCALL_LLM_MODEL: ${ONCALL_LLM_MODEL:-}
+      ONCALL_GOLDEN_DEV_DIR: /app/repo/datasets/golden/dev
     volumes:
       - ./src:/app/src
       - ./:/app/repo

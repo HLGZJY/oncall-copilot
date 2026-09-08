@@ -24,6 +24,12 @@ HTTP_MODULES = {"httpx", "requests", "urllib3", "aiohttp"}
 LLM_MODULES = {"openai", "anthropic"}
 HTTP_ALLOWED = {"src/oncall/infra/http.py"}  # _rel_module 以仓库根为基准，含 src/ 前缀
 LLM_ALLOWED = {"src/oncall/infra/llm.py"}
+
+# A1 的**实质**防线是 conftest 的 autouse 断网 fixture（pytest-socket 直接禁 socket），
+# import 守卫只是第二道 lint。真实 LLM client 的「SDK 异常 → 契约异常」映射必须在单测
+# 钉死（热切换前提：映射错了 D-07 的 0 漏报兜底就失效），而这需要 import SDK 的异常类型。
+# 显式登记豁免文件（只 import 异常类型、不构造 client），新增文件必须在此登记并写明理由。
+SDK_EXCEPTION_MAPPING_TESTS = {"tests/unit/test_infra_llm.py"}
 MUTABLE_FACTORIES = {"list", "dict", "set", "bytearray", "defaultdict", "Counter"}
 
 # R6（G4）：ingest 主链路零 LLM 依赖——0 漏收不被外部 LLM 依赖拖垮。
@@ -192,6 +198,8 @@ class TestTestGuards:
         for path in _iter_py_files(TESTS_ROOT):
             if "integration" in path.parts:
                 continue  # integration 单独 schedule，豁免
+            if _rel_module(path) in SDK_EXCEPTION_MAPPING_TESTS:
+                continue  # 只 import SDK 异常类型以钉死映射（见常量注释）
             tree = ast.parse(path.read_text(encoding="utf-8"))
             for node in ast.walk(tree):
                 names = []

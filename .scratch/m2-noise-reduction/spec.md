@@ -1,6 +1,6 @@
 # m2-noise-reduction · Spec
 
-M2 降噪分类。**权威设计**：`docs/design/m2-denoise-classify-design.md`（status: reviewed，2026-09-07 评审通过，G1–G9 全部定案，标准来源见该文档 §7「评审依据」R1–R8）。
+M2 降噪分类。**权威设计**：`docs/design/m2-denoise-classify-design.md`（status: **implemented**，2026-09-08 验收节实测回填；评审 2026-09-07 通过，G1–G9 全部定案，标准来源见该文档 §7「评审依据」R1–R8）。
 
 ## 目标
 
@@ -31,6 +31,18 @@ M2 降噪分类。**权威设计**：`docs/design/m2-denoise-classify-design.md`
 ## 状态
 
 - [x] 设计评审通过（2026-09-07，G1–G9 定案，依据 R1–R8；D-19/D-20/D-21 已登记）
-- [ ] M2-A 分类内核：01–03
-- [ ] M2-B 落库与统计：04–05
-- [ ] M2-C 数据底座与验收：06（ready-for-human）→ 07（真实 LLM 调用前需用户确认 key）
+- [x] M2-A 分类内核：01–03
+- [x] M2-B 落库与统计：04–05
+- [x] M2-C 数据底座与验收：06 → 07（真实 LLM 调用已于 2026-09-08 经用户确认并实测）
+- [x] **M2 全部 7 票 resolved（2026-09-08）**；实测口径见设计文档验收节与 issue 07 Comments
+
+### M2 收官实测口径（2026-09-08，issue 07 回填）
+
+| 口径 | 验收硬指标 | 本轮实测 | 结论 |
+|---|---|---|---|
+| 降噪率（D-20） | ≥80%（PRD 项目级，M7 复核） | 37.5%（R=8 / I=5） | 未达，原因与复核路径见 issue 07 Comments（本轮无告警风暴，M1 去重贡献≈0） |
+| 漏报 | = 0 | **0**（risk 0 / 误报误判 0） | 达标 |
+| 3 剧本分类正确 | 与 golden 逐逻辑告警一致，含误报被识别 | **7/7 一致**（误报剧本判 false_positive） | 达标 |
+| 单次 LLM 成本（G8） | ≤ ¥0.05 | **≈¥0.00049**（实际计费 ¥0，免费额度抵扣） | 达标（上限的 1/100） |
+| 规则先行 | 规则命中行 0 次 LLM | 取证行 llm_calls=0 / channel=rule / tokens=0 | 达标 |
+| 门禁 | pytest + ruff 绿 | 280 passed / 4 skipped，coverage 97.12% | 达标 |

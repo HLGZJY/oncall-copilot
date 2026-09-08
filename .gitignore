@@ -35,6 +35,8 @@ data/
 *.log
 # SQLite dev 库是运行时产物（ONCALL_DATABASE_URL 默认 sqlite:///./oncall.db），不入库
 *.db
+# M2 issue 07：重建库（补 classification_json 列）前的旧库备份，同样是运行时产物
+oncall.db.bak*
 
 # ---- 操作系统 (Windows) ----
 Thumbs.db

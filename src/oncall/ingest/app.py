@@ -47,6 +47,10 @@ def create_app(
     上下文配置默认 `ContextConfig.from_env()`（issue 04 口径）。
     `classify_runtime` 透传给 /classify（G4 独立入口）：不注入时该端点落 503，
     本工厂自身保持零 LLM 运行时依赖（类型仅 TYPE_CHECKING 引用，R6）。
+
+    issue 07 起：未显式注入时按环境变量装配**真实** LLM 通道
+    （`_classify_runtime_from_env`），配置不全则维持 None（/classify 落 503，
+    ingest 主链路照常可用）——装配失败不拖垮 ingest 是 R6 的硬要求。
     """
     if engine is None:
         engine = create_engine(os.environ.get(DATABASE_URL_ENV, DEFAULT_DATABASE_URL))
@@ -58,6 +62,8 @@ def create_app(
         )
     if context_config is None:
         context_config = ContextConfig.from_env()
+    if classify_runtime is None:
+        classify_runtime = _classify_runtime_from_env()
     create_tables(engine)  # dev 建表（D-13：Alembic 延至切 MySQL 时引入）
 
     app = FastAPI(title="oncall-copilot", version="0.1.0")
@@ -86,3 +92,27 @@ def create_app(
     )
 
     return app
+
+
+def _classify_runtime_from_env() -> ClassifyRuntime | None:
+    """按环境变量装配真实 LLM 通道（issue 07）；配置不全返回 None → /classify 503。
+
+    局部导入而非模块级：本模块必须保持「没装 / 没配 LLM 也能起 ingest」的
+    可用性（R6：ingest 主链路零 LLM 依赖），SDK 依赖链只在确需装配时引入。
+    """
+    from oncall.classify.llm import LLMChannel, LLMChannelOptions  # noqa: PLC0415
+    from oncall.classify.service import ClassifyRuntime  # noqa: PLC0415
+    from oncall.infra.llm import LLMConfigError, OpenAILLMClassifier  # noqa: PLC0415
+
+    try:
+        classifier = OpenAILLMClassifier.from_env()
+    except LLMConfigError:
+        return None  # 未配置真实 LLM：/classify 落 503，不静默降级到 mock
+    return ClassifyRuntime(
+        llm_channel=LLMChannel(
+            classifier,
+            model=classifier.model,
+            samples=classifier.samples,  # 与 client 同批样本，prompt 一致
+            options=LLMChannelOptions(timeout_seconds=classifier.timeout_seconds),
+        )
+    )
