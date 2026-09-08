@@ -35,6 +35,7 @@ read_when: 任何会话找不到该去哪找细节知识时
 - M8 展示层（Vue3 面板）设计 → `design/m8-showcase-design.md`（P0 六件核心信息件 + 演示故事线 + API 草案）
 - M0 环境与混沌注入设计与任务分解 → `design/m0-environment-design.md`（reviewed；issue 在 `.scratch/m0-environment/`）
 - M1 告警接入与归一化：设计 + 开发计划 → `design/m1-alert-ingestion-design.md`（draft，未进入 agent 阶段；issue 待建）；执行细案 → `plans/m1-execution.md`（seed）
+- M4 证据链与过程存储：设计 + 开发计划 → `design/m4-evidence-chain-design.md`（draft，G1–G9 评审中；评审后拆票 `.scratch/m4-evidence-chain/`）
 - 想知道"现在该干哪一步" → `plans/roadmap-m0-m9.md`
 - 想查术语/数据集/面试话术 → `reference/`
 - 想建 issue / 查 issue 状态 → `agents/issue-tracker.md`；triage 标签取值 → `agents/triage-labels.md`（issue 本体在根目录 `.scratch/`）
