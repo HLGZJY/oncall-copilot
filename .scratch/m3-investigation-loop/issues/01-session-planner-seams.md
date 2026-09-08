@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by:
 
 # 01 调查会话契约与 Planner 接缝（T1 / G1·G4 推荐）
@@ -20,8 +20,18 @@ M3 调查循环的领域契约与 LLM 决策接缝，落 `src/oncall/harness/`�
 
 ## 验收（可机械判定）
 
-- [ ] `EvidenceStep`/`Hypothesis` 序列化 roundtrip 单测绿（JSON 与 dict 双向；字段集合与架构 §4 冻结列精确匹配）
-- [ ] `InvestigationSession` 状态机单测绿（步计数推进 / 终止四态 / 序列化恢复 roundtrip）
-- [ ] `PlannerDecision` 校验单测绿（两分支合法样例通过 / 互斥违反与缺字段拒绝 / args 非 dict 拒绝）
-- [ ] MockPlanner 契约单测绿（正常/畸形/超时三夹具按序回放、异常实例透传、耗尽回落默认、调用入参记录可断言）
-- [ ] 全量 pytest + ruff check + ruff format --check 绿（基线 280 passed / 4 skipped / 97.12% 不回退）
+- [x] `EvidenceStep`/`Hypothesis` 序列化 roundtrip 单测绿（JSON 与 dict 双向；字段集合与架构 §4 冻结列精确匹配）
+- [x] `InvestigationSession` 状态机单测绿（步计数推进 / 终止四态 / 序列化恢复 roundtrip）
+- [x] `PlannerDecision` 校验单测绿（两分支合法样例通过 / 互斥违反与缺字段拒绝 / args 非 dict 拒绝）
+- [x] MockPlanner 契约单测绿（正常/畸形/超时三夹具按序回放、异常实例透传、耗尽回落默认、调用入参记录可断言）
+- [x] 全量 pytest + ruff check + ruff format --check 绿（基线 280 passed / 4 skipped / 97.12% 不回退）
+
+## 落地注记（2026-09-08）
+
+- 落位：`src/oncall/harness/{__init__,session,planner}.py`（三文件均 ≤300 行，C6 绿）+ `tests/unit/test_harness_session.py` / `test_harness_planner.py`
+- 契约字段对齐：`EvidenceStep` 十字段 = 架构 §4 `evidence_steps` 冻结列去掉库列 id/incident_id（M4 建表时补，D-25）；`Hypothesis` 四字段同理；`output_json`/`output_summary` 双存有测试钉死
+- 状态机：`InvestigationSession` 组件 frozen、容器可变分离；`record_step` 步号连续校验；concluded/escalated/aborted 仅可从 running 进入一次（D-28 终止语义，escalate 不是丢弃）
+- 异常族：`PlannerError`/`PlannerOutputError`/`PlannerTimeoutError` 在 harness 自持（C3 禁 import classify），docstring 与 M2 `oncall.classify.client` 互引（D-22）
+- MockPlanner：决策/异常混排按序回放、异常实例透传（`is` 同一实例）、耗尽稳定回落默认结论、`calls` 记录入参可断言——照 `MockLLMClassifier` 先例
+- 门禁实测：**314 passed / 4 skipped（+34 新测试）/ coverage 97.37%**；ruff check + ruff format --check 全绿；架构守卫 C3/C6/A1/A2 随全量跑绿
+- 术语：调查会话/证据步/决策输出均已在 CONTEXT.md（2026-09-08 评审入表），本票零新增术语

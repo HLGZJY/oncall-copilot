@@ -24,7 +24,7 @@ M3 自主根因调查循环（自研 ReAct）。**权威设计**：`docs/design/
 
 | Issue | 任务 | 对应设计文档 | Blocked by | 就绪态 |
 |---|---|---|---|---|
-| 01 | 调查会话契约与 Planner 接缝（session 契约 + MockPlanner + 异常族） | T1 | — | ready-for-agent |
+| 01 | 调查会话契约与 Planner 接缝（session 契约 + MockPlanner + 异常族） | T1 | — | resolved（2026-09-08） |
 | 02 | ToolRegistry 与权限分级（+ 两 stub 工具） | T2 | 01 | ready-for-agent |
 | 03 | 取证工具实现（metrics/logs/anomaly/topology 四态） | T3 | 02 | ready-for-agent |
 | 04 | ContextManager（摘要模板/预算/证伪假设移出） | T4 | 01 | ready-for-agent |
