@@ -16,7 +16,7 @@ read_when: 评审 M4 方案时；进入 M4 开发前；被问「证据链怎么�
 - **当前状态**：`reviewed`（2026-09-08 G1–G9 评审定案——用户逐条拍板，全部采纳推荐默认解；定案已登记 `decisions.md` D-30–D-38，新术语已入 `CONTEXT.md`）
   - 上一状态 `draft`（2026-09-08 草案完成，提交 `a9feeef`）；无更早状态
 - **评审人 / 评审日期**：用户逐条拍板（G1–G9 全部采纳推荐默认解），2026-09-08；评审依据由 AI 检索官方标准提供（R1–R5，含 URL 与取用日期），用户保留推翻权（推翻须回退 `draft` 并重开对应 issue）
-- **关联 issue**：评审后拆票建 `.scratch/m4-evidence-chain/`（spec.md + issues/，与 T1–T8 对应；**仅用户明确要求继续时执行**，见「评审后动作」）
+- **关联 issue**：`.scratch/m4-evidence-chain/`（spec.md + issues/01–08，与 T1–T8 一一对应；2026-09-08 拆票完成，T1–T8 全部 `ready-for-agent`）
 - **设计期口径**：本票零写码、零建表、零真实调用（LLM 全 mock 口径照 M2/M3 先例）；真实调用留实现票 T8，开工前需用户确认 key（照 M3 issue 08 先例）
 
 ## 目标
@@ -176,6 +176,6 @@ read_when: 评审 M4 方案时；进入 M4 开发前；被问「证据链怎么�
 1. ✅ G 表定案说明回填 + 本文件翻 `reviewed`（评审人/日期已填）
 2. ✅ `docs/design/decisions.md` 登记 **D-30–D-38**（逐条过 ADR 三判据自检：难以逆转 / 无上下文会意外 / 真实权衡；**注意表格行格式**照现有表续行）
 3. ✅ `CONTEXT.md` 新术语入表（调查记录 / 证据仓库，含 `_Avoid_`）
-4. ⬜ `.scratch/m4-evidence-chain/` 拆票（spec.md + issues/01–08 + 标签约定照 issue-tracker.md）——**仅用户明确要求继续时执行**
+4. ✅ `.scratch/m4-evidence-chain/` 拆票完成（spec.md + issues/01–08 与 T1–T8 一一对应；T1–T8 全部 `ready-for-agent`，T8 附 key 门槛；标签约定照 issue-tracker.md）
 5. ⬜ 架构文档回写随实现票执行：§4 六表 → 七表（G2/D-31）；§3.3 tool_help 措辞按意图兑现注记（G9/D-38）；agent-loop-design 示例键名修订（G6/D-35，随 T3 提交交用户复核）
 6. ✅ `docs/README.md` 索引行已随草案新增（M4 设计文档条目）
