@@ -30,7 +30,7 @@ M3 自主根因调查循环（自研 ReAct）。**权威设计**：`docs/design/
 | 04 | ContextManager（摘要模板/预算/证伪假设移出） | T4 | 01 | resolved（2026-09-08） |
 | 05 | Verifier（规则层 + LLM 裁决接缝） | T5 | 03, 04 | resolved（2026-09-08） |
 | 06 | 主循环 Loop（终止三出口/失败六值归类/防绕圈四机制） | T6 | 01–05 | resolved（2026-09-08） |
-| 07 | 调查入口 API（POST /investigate + GET 报告） | T7 | 06 | ready-for-agent |
+| 07 | 调查入口 API（POST /investigate + GET 报告） | T7 | 06 | resolved |
 | 08 | 端到端 3 剧本验证 + 真实实测回填收尾 | T8 | 07 | ready-for-agent（真实调用前确认 key） |
 
 ## M3/M4/M7 边界（spec 级写清）
@@ -44,5 +44,5 @@ M3 自主根因调查循环（自研 ReAct）。**权威设计**：`docs/design/
 - [x] G1–G9 评审拍板（2026-09-08 全部采纳推荐解；D-22–D-29 已登记 `decisions.md`，新术语已入 `CONTEXT.md`，设计文档翻 `reviewed`）
 - [x] M3-A 内核：01 [x] · 02 [x]（2026-09-08）· 03 [x]（2026-09-08，M3-A 三票收官）
 - [x] M3-B 编排：04 [x]（2026-09-08）· 05 [x]（2026-09-08）· 06 [x]（2026-09-08，M3-B 三票收官）
-- [ ] M3-C 入口与验收：07 → 08（真实 LLM 调用需用户确认 key）
+- [ ] M3-C 入口与验收：07 ✅ → 08（真实 LLM 调用需用户确认 key）
 - [ ] 设计文档翻 `implemented`（T8 实测回填后）

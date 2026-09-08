@@ -9,6 +9,7 @@ dev 运行（仓库根目录）：
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -18,6 +19,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from oncall.api.card import build_alert_card
+from oncall.api.investigation import (
+    InvestigationDeps,
+    create_investigation_router,
+)
 from oncall.api.routes import create_router
 from oncall.context.config import ContextConfig
 from oncall.db import create_tables
@@ -34,12 +40,14 @@ DEFAULT_DATABASE_URL = "sqlite:///./oncall.db"
 DEDUP_WINDOW_SECONDS_ENV = "ONCALL_DEDUP_WINDOW_SECONDS"
 
 
-def create_app(
+def create_app(  # noqa: PLR0913, PLR0917 — 注入面持续增长（M2 classify → M3 investigation）；
+    # 收拢进单个 dataclass 会破坏 M1/M2 既有测试的 create_app 关键字调用面（票面边界不改 M2 文件）
     engine: Engine | None = None,
     dedup_window: timedelta | None = None,
     context_config: ContextConfig | None = None,
     context_client: PromClient | None = None,
     classify_runtime: ClassifyRuntime | None = None,
+    investigation: InvestigationDeps | None = None,
 ) -> FastAPI:
     """应用工厂：测试注入内存库引擎与上下文替身；进程启动走环境变量配置。
 
@@ -51,6 +59,11 @@ def create_app(
     issue 07 起：未显式注入时按环境变量装配**真实** LLM 通道
     （`_classify_runtime_from_env`），配置不全则维持 None（/classify 落 503，
     ingest 主链路照常可用）——装配失败不拖垮 ingest 是 R6 的硬要求。
+
+    issue 07（M3/T7）：`investigation` 透传给 /investigate 与
+    /investigations/{id}（组件缺省 None → /investigate 落 503，不静默降级到
+    mock；真实 Planner client 属 T8）；opening_builder 缺省由本工厂按
+    context 配置兜底（D-17 事件卡片，时间锚 last_fired_at）。
     """
     if engine is None:
         engine = create_engine(os.environ.get(DATABASE_URL_ENV, DEFAULT_DATABASE_URL))
@@ -91,7 +104,32 @@ def create_app(
         )
     )
 
+    # 调查入口路由（issue 07 / M3-T7）：组件缺省 None → /investigate 落 503；
+    # opening_builder 缺省按 context 配置组装 D-17 卡片（时间锚 last_fired_at）
+    if investigation is None:
+        investigation = InvestigationDeps(components=None)
+    if investigation.opening_builder is None:
+        investigation = _with_default_opening_builder(investigation, context_config, context_client)
+    app.include_router(create_investigation_router(engine, investigation))
+
     return app
+
+
+def _with_default_opening_builder(
+    deps: InvestigationDeps,
+    context_config: ContextConfig,
+    context_client: PromClient | None,
+) -> InvestigationDeps:
+    """补装默认开局锚点构造器：incident.alert_ids[0] → D-17 事件卡片。
+
+    独立小工厂而非闭包内联：dataclasses.replace 语义直观，且便于测试直接
+    断言「卡片以 alert_ids[0] 组装、时间锚 last_fired_at」。
+    """
+
+    def build(session: Session, alert_id: int) -> dict[str, object] | None:
+        return build_alert_card(session, alert_id, config=context_config, client=context_client)
+
+    return dataclasses.replace(deps, opening_builder=build)
 
 
 def _classify_runtime_from_env() -> ClassifyRuntime | None:
