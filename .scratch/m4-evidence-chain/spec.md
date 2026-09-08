@@ -27,7 +27,7 @@ M4 证据链与过程存储（W4 前半，PRD §7-M4，不可砍三支柱之一�
 | 01 | ORM 三表（investigations/evidence_steps/hypotheses + create_all + CHECK） | T1 / G1–G3 | — | resolved（2026-09-08） |
 | 02 | 证据仓库写入接缝（步进即写/行 id 回填/写失败熔断） | T2 / G4–G5 | 01 | resolved（2026-09-08） |
 | 03 | 报告读库与 JSON 形状定案（注册表退役 + agent-loop-design 回写） | T3 / G6 | 02 | resolved（2026-09-08） |
-| 04 | Markdown 最小版导出（report.md 端点 + str 模板） | T4 / G7 | 03 | ready-for-agent |
+| 04 | Markdown 最小版导出（report.md 端点 + str 模板） | T4 / G7 | 03 | ✅ resolved |
 | 05 | 缺口① opening 视图（build_decision_view + loop 瘦身） | T5 / G8 | — | ready-for-agent |
 | 06 | 缺口② 工具 schema 摘要进 system prompt | T6 / G9 | — | ready-for-agent |
 | 07 | 验收断言与门禁（验收标准节逐条转机械断言） | T7 | 01–06 | ready-for-agent |

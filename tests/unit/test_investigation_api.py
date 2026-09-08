@@ -12,6 +12,9 @@ M4 换读表）/ D-19（status 枚举冻结；status ≠ investigating 仍允许
 - GET /investigations/{id}（M4-T3 换读三表，D-25 注册表退役 / D-35 形状权威）：
   有报告 200（与 POST 内存导出逐字段 roundtrip 一致）/ 无报告 404 /
   escalated 可查 / 同 incident 重复调查读到最新一次 / running 行 404
+- GET /investigations/{id}/report.md（M4-T4 / D-36 / G7）：200 + text/markdown
+  数据直出（步/假设/头部摘要；output_json 不进正文）/ 无记录与 running 行 404 /
+  escalated 可导出 / 与 JSON 报告同源对账
 - 语义：status ≠ investigating 仍允许调查；缺省组件 503；非预期异常 500 结构化
 本票零 LLM 真实调用、零 HTTP 外呼：harness 组件全 mock（照 T6 先例），
 API 测试 inproc_asgi（进程内 ASGI，无真实网络 IO，A1 断网不适用）。
@@ -423,5 +426,109 @@ class TestGetInvestigationReport:
             session.commit()
 
         resp = client.get(f"/investigations/{incident_id}")
+
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /investigations/{incident_id}/report.md 契约（M4-T4 / D-36 / G7）
+# ---------------------------------------------------------------------------
+
+
+class TestGetMarkdownReport:
+    def test_markdown_export_returns_200_text_markdown_with_full_content(self):
+        """200 + text/markdown；内容 = 全部步 + 全部假设 + 结论/终态/failure_mode。"""
+        script = [
+            tool_decision(thought="假设一：消费者延迟"),
+            tool_decision(thought="假设二：CPU 饱和"),
+            conclusion_decision("CPU 饱和定案"),
+        ]
+        components = make_components(
+            MockPlanner(script=script),
+            judge_script=[VerifierVerdict(supported=False, reason="证据不支持")],
+            judge_default=VerifierVerdict(supported=True, reason="支持"),
+        )
+        client, engine = _client_with_components(components)
+        incident_id, _ = _seed_incident(engine)
+        posted = client.post("/investigate", json={"incident_id": incident_id})
+        assert posted.status_code == 200
+
+        resp = client.get(f"/investigations/{incident_id}/report.md")
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/markdown")
+        text = resp.text
+        # 步数 = 库内行数（2 个工具步），格式票面钉死 `## Step N — {tool}`
+        assert text.count("## Step ") == 2
+        assert "## Step 1 — query_metrics" in text
+        assert "## Step 2 — query_metrics" in text
+        # 头部摘要：结论 / 终态 / failure_mode / 成本汇总（数据直出，None 原样）
+        assert "CPU 饱和定案" in text
+        assert "termination: concluded" in text
+        assert "failure_mode: None" in text
+        assert "step_count: 2" in text
+        assert "total_tokens: " in text
+        assert "total_cost_cny: " in text
+        # 全部假设：status + supporting/against 步号（一 rejected 一 confirmed）
+        assert "- [rejected] 假设一：消费者延迟（支持步: 1｜反对步: 无）" in text
+        assert "- [confirmed] 假设二：CPU 饱和（支持步: 2｜反对步: 无）" in text
+        # D-35 分工：output_json 原始全文不进正文（可回溯走 JSON 报告）
+        assert "output_json" not in text
+        # ts 与 JSON 报告同口径（Z 后缀，踩坑⑦）
+        assert "ts: 2026-09-08T08:00:00Z" in text
+
+    def test_markdown_content_matches_json_report_data(self):
+        """Markdown 与 JSON 报告同源（共用读库路径）：关键字段逐一对账。"""
+        script = [tool_decision(), conclusion_decision("队列堆积导致告警")]
+        client, engine = make_client(script)
+        incident_id, _ = _seed_incident(engine)
+        client.post("/investigate", json={"incident_id": incident_id})
+        body = client.get(f"/investigations/{incident_id}").json()
+
+        resp = client.get(f"/investigations/{incident_id}/report.md")
+
+        text = resp.text
+        assert f"incident_id={body['incident_id']}" in text
+        assert f"total_tokens: {body['total_tokens']}" in text
+        assert f"conclusion: {body['conclusion']}" in text
+        for step in body["steps"]:
+            assert f"## Step {step['step_no']} — {step['tool']}" in text
+            assert step["output_summary"] in text
+
+    def test_escalated_report_exportable_via_markdown(self):
+        """D-28 延伸：escalated 报告同经 Markdown 出口（转人工落点可带走）。"""
+        script = [
+            tool_decision(
+                args={"promql": f"m{i}", "start": NOW.isoformat(), "end": NOW.isoformat()}
+            )
+            for i in range(20)
+        ]
+        client, engine = make_client(script)
+        incident_id, _ = _seed_incident(engine)
+        client.post("/investigate", json={"incident_id": incident_id})
+
+        resp = client.get(f"/investigations/{incident_id}/report.md")
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/markdown")
+        text = resp.text
+        assert "termination: escalated" in text
+        assert text.count("## Step ") == 15
+        assert "step_count: 15" in text
+
+    def test_markdown_without_report_returns_404(self):
+        client, _engine = make_client([conclusion_decision("x")])
+        resp = client.get("/investigations/999/report.md")
+        assert resp.status_code == 404
+
+    def test_markdown_running_row_returns_404(self):
+        """running 行 404 语义与 JSON GET 一致（共用 _load_report_body）。"""
+        client, engine = make_client([conclusion_decision("x")])
+        incident_id, _ = _seed_incident(engine)
+        with Session(engine) as session:
+            session.add(Investigation(incident_id=incident_id, status="running"))
+            session.commit()
+
+        resp = client.get(f"/investigations/{incident_id}/report.md")
 
         assert resp.status_code == 404
