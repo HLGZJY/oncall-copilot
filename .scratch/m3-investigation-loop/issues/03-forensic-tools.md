@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02
 
 # 03 取证工具实现（T3 / G2·G3 推荐）
@@ -22,9 +22,18 @@ Blocked by: 02
 
 ## 验收（可机械判定）
 
-- [ ] 每工具四态（ok/empty/error/unavailable）单测绿（注入 Fetcher 替身，断网单测全绿）
-- [ ] query_metrics 时间锚缺省 `last_fired_at` ± 窗口单测绿；series 上限 20 截断
-- [ ] search_logs limit 默认/上限 100、direction 默认 backward 单测绿
-- [ ] detect_anomaly 统计判定单测绿（构造序列：正常/尖峰/水平漂移/空序列四类夹具）
-- [ ] get_topology 复用 context 三源、D-16 形状单测绿
-- [ ] 全量 pytest + ruff 双检绿
+- [x] 每工具四态（ok/empty/error/unavailable）单测绿（注入 Fetcher 替身，断网单测全绿）
+- [x] query_metrics 时间锚缺省 `last_fired_at` ± 窗口单测绿；series 上限 20 截断
+- [x] search_logs limit 默认/上限 100、direction 默认 backward 单测绿
+- [x] detect_anomaly 统计判定单测绿（构造序列：正常/尖峰/水平漂移/空序列四类夹具）
+- [x] get_topology 复用 context 三源、D-16 形状单测绿
+- [x] 全量 pytest + ruff 双检绿
+
+## 落地注记（2026-09-08）
+
+- 落位：`src/oncall/harness/tools/` 新增 `metrics.py` / `logs.py` / `anomaly.py` / `topology.py` / `sources.py`（共享 helper）；测试 `tests/unit/test_harness_tools_forensic.py`（30 例）。未改 schemas.py / registry.py / pyproject / oncall.context
+- **时间锚口径**：schema 已冻结 query_metrics start/end 必填 → `default_time_window(anchor, window)` 落 `sources.py` 供参数组装侧（issue 06/07）调用；search_logs 的 `end` 缺省（schema 允许 None）在 handler 内锚定工厂注入的 `last_fired_at`（D-17）
+- search_logs 工厂需注入 `loki_url`（ContextConfig 无 Loki 配置项，未动 context 既有文件）；Loki 时间参数为纳秒串（R4）
+- detect_anomaly：基线窗口 = 序列前半段（≥3 点），基线 σ 退化（全等序列）时回退全序列 σ——否则恒定基线上的尖峰因 σ=0 被跳过；`meta.method = stat-v1-zscore-iqr-jump`
+- 超时兑现：handler 侧取 `min(timeout_seconds, 数据源配置超时)` 传给 Fetcher（M3-02 语义）；传输失败 → unavailable（D-16 不抛错），API 层失败 → error
+- 门禁：**373 passed / 4 skipped**（基线 343 只增不减）/ coverage **97.33%**；ruff check + format --check 全绿；架构守卫 C3/C4/C6/C8/A1/A2 全绿
