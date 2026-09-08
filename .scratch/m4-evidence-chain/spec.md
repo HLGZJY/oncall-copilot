@@ -30,7 +30,7 @@ M4 证据链与过程存储（W4 前半，PRD §7-M4，不可砍三支柱之一�
 | 04 | Markdown 最小版导出（report.md 端点 + str 模板） | T4 / G7 | 03 | ✅ resolved |
 | 05 | 缺口① opening 视图（build_decision_view + loop 瘦身） | T5 / G8 | — | resolved（2026-09-08） |
 | 06 | 缺口② 工具 schema 摘要进 system prompt | T6 / G9 | — | ✅ resolved（2026-09-08） |
-| 07 | 验收断言与门禁（验收标准节逐条转机械断言） | T7 | 01–06 | ready-for-agent |
+| 07 | 验收断言与门禁（验收标准节逐条转机械断言） | T7 | 01–06 | resolved |
 | 08 | 真实实测重跑与收尾（**开工前需用户确认 key**） | T8 | 05, 06, 07 | ready-for-agent（key 门槛） |
 
 ## M4/M5/M6/M7 边界（spec 级写清）
