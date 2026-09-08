@@ -2,7 +2,7 @@
 title: "M4 证据链与过程存储：设计与开发计划"
 summary: "把 M3 内存契约（EvidenceStep/Hypothesis/InvestigationSession）落库为 ORM 三表（investigations + evidence_steps + hypotheses）：步进即写 100% 落库、事故-证据一对多、导出 JSON/Markdown 报告；承接 issue 08 两个结构缺口修复（opening 视图 + 工具 schema 可见）与真实实测重跑；G1–G9 开放点评审与 T1–T8 拆票"
 source: docs/prd.md §4/§7-M4 + docs/architecture/architecture.md §3.3/§4 + docs/architecture/agent-loop-design.md + docs/design/m3-investigation-loop-design.md（形制模板与 M3/M4 边界定案）+ docs/design/decisions.md D-17/19/22/23/25/28/29 + .scratch/m3-investigation-loop/issues/08-e2e-validation.md（两结构缺口注记）+ 评审标准来源（见「评审依据」R1–R5）
-status: draft
+status: reviewed
 updated: 2026-09-08
 read_when: 评审 M4 方案时；进入 M4 开发前；被问「证据链怎么落库/怎么保证可审计」时
 ---
@@ -13,10 +13,10 @@ read_when: 评审 M4 方案时；进入 M4 开发前；被问「证据链怎么�
 
 `draft`（草案，讨论中）→ `reviewed`（评审通过，可拆票）→ `implemented`（已落地，验收回填）→ `superseded`（被后续设计取代，注明替代文档链接）
 
-- **当前状态**：`draft`（2026-09-08 草案完成，G1–G9 待用户逐条拍板）
-  - 上一状态：无（本文档首状态即 draft）
-- **评审人 / 评审日期**：待定——用户逐条拍板后回填；定案结论 = 各开放点「推荐默认解」或用户推翻项
-- **关联 issue**：评审后拆票建 `.scratch/m4-evidence-chain/`（spec.md + issues/，与 T1–T8 对应；本票不建，见「评审后动作」）
+- **当前状态**：`reviewed`（2026-09-08 G1–G9 评审定案——用户逐条拍板，全部采纳推荐默认解；定案已登记 `decisions.md` D-30–D-38，新术语已入 `CONTEXT.md`）
+  - 上一状态 `draft`（2026-09-08 草案完成，提交 `a9feeef`）；无更早状态
+- **评审人 / 评审日期**：用户逐条拍板（G1–G9 全部采纳推荐默认解），2026-09-08；评审依据由 AI 检索官方标准提供（R1–R5，含 URL 与取用日期），用户保留推翻权（推翻须回退 `draft` 并重开对应 issue）
+- **关联 issue**：评审后拆票建 `.scratch/m4-evidence-chain/`（spec.md + issues/，与 T1–T8 对应；**仅用户明确要求继续时执行**，见「评审后动作」）
 - **设计期口径**：本票零写码、零建表、零真实调用（LLM 全 mock 口径照 M2/M3 先例）；真实调用留实现票 T8，开工前需用户确认 key（照 M3 issue 08 先例）
 
 ## 目标
@@ -111,7 +111,7 @@ read_when: 评审 M4 方案时；进入 M4 开发前；被问「证据链怎么�
 
 ## 开放设计点（评审 grill）
 
-> 以下 G1–G9 待用户逐条拍板：每条给推荐默认解 + 理由（M3 先例：采纳推荐解则定案结论 = 推荐列）；涉及外部标准的依据见节末「评审依据」R1–R5（含 URL 与取用日期）。定案后登记 `decisions.md` **D-30 起**，若被推翻需回退 `draft` 并重开对应 issue。
+> 以下 G1–G9 已于 **2026-09-08 全部评审定案**：用户逐条拍板，**全部采纳推荐默认解**（定案结论 = 各行「推荐默认解」列，不再另设定案列）；标准来源见各行「依据」及节末「评审依据」R1–R5。定案已登记 `decisions.md` **D-30–D-38**（G1→D-30 / G2→D-31 / G3→D-32 / G4→D-33 / G5→D-34 / G6→D-35 / G7→D-36 / G8→D-37 / G9→D-38）。若被推翻需回退 `draft` 并重开对应 issue。
 
 | # | 开放点 | 推荐默认解 | 理由 | 依据 |
 |---|---|---|---|---|
@@ -140,7 +140,7 @@ read_when: 评审 M4 方案时；进入 M4 开发前；被问「证据链怎么�
 ## 开发计划（任务拆解）
 
 > 节奏：W4 前半；目标 2–3 天（每日 1–2h）。TDD 红绿循环照硬规则 12：三表 ORM 契约、步进即写接缝、报告键集合、opening 投影键集是约定接缝。
-> 就绪态判据（照 M3 先例）：**本票全部 T 待评审定案后统一终审**——G 全采纳推荐解则 T1–T7 转 `ready-for-agent`、T8 附 key 门槛转 `ready-for-agent`；若 G8/G9 被推翻方向（如选 B 改 D-23 面）则对应票转 `ready-for-human` 复审。拆票建 `.scratch/m4-evidence-chain/` 归评审后动作（见节末）。
+> 就绪态判据（照 M3 先例）：**G1–G9 已于 2026-09-08 全部定案，T1–T8 转 `ready-for-agent`**（T8 附 key 门槛：真实调用前需用户确认，照 M3 issue 08 流程）。拆票建 `.scratch/m4-evidence-chain/` 归评审后动作（见节末）。
 
 **关键里程碑**：
 
@@ -150,14 +150,14 @@ read_when: 评审 M4 方案时；进入 M4 开发前；被问「证据链怎么�
 
 | # | 任务 | 内容 | 验收（机械判定，实测回填） | 依赖 | 就绪态 |
 |---|---|---|---|---|---|
-| T1 | ORM 三表 | `investigations`/`evidence_steps`/`hypotheses`（G1/G2/G3 定案形状）；`create_all` 幂等；CHECK 约束照 M2 先例（status 枚举落 DB 层） | pytest 绿：三表建表幂等、FK/唯一约束生效、冻结列字段与架构 §4 逐字段一致断言 | G1–G3 | 评审后终审 |
-| T2 | 证据仓库写入接缝 | `db/evidence_repo.py`：`record_step`/`add_hypothesis`/终态与 DB 写同点（G4 步进即写）；落库后行 id 回填；落库异常冒泡归类 `tool_error`；C3 论证落位 | pytest 绿：步进即写逐行断言、escalated/aborted 已取证部分完整、行 id 指针接口不变（D-25）、写失败熔断路径 | T1 | 评审后终审 |
-| T3 | 报告读库与 JSON 定案 | `GET /investigations/{incident_id}` 注册表换读库；JSON 形状按 G6 定案（含 agent-loop-design 修订回写）；`investigations` 会话级字段入报告 | pytest 绿：报告键集合精确守卫、404 语义（无记录）、escalated 报告读库可查、重复调查覆盖旧行 | T2 | 评审后终审 |
-| T4 | Markdown 最小版导出 | `GET /investigations/{incident_id}/report.md`（G7）；str 模板零新依赖 | pytest 绿：200 + `text/markdown`、内容含全部步/假设/结论/终态 | T3 | 评审后终审 |
-| T5 | 缺口① opening 视图 | `context_manager.build_decision_view`（G8 投影键集）+ loop.py 瘦身；C6 断言 | pytest 绿：view 含 `opening` 键集合断言、loop.py ≤300 行、既有 mock e2e 3/3 不回退 | G8 | 评审后终审 |
-| T6 | 缺口② schema 可见性 | 按 G9 定案：system prompt 附六工具 schema 摘要（A2 模板落位）或 tool_help 工具 | pytest 绿：schema 摘要存在断言、系统提示 ≤1500 tokens、（选 B 时）第 7 工具注册与 D-23 面变更登记 | G9 | 评审后终审 |
-| T7 | 验收断言与门禁 | 「验收标准」节逐条转机械断言（100% 落库/回溯/JSON 比对/边界不破）；架构守卫（C3/C4/C5/C6/A2）全绿 | pytest 绿：验收节断言全绿；全量门禁基线 479/7/98.05% 只增不减 | T1–T6 | 评审后终审 |
-| T8 | 真实实测重跑与收尾 | 两缺口修复后 3 剧本真实调用重跑（**开工前需用户确认 key**，照 M3 issue 08 流程）；步数/耗时/成本/Top-1 如实回填 → 设计文档翻 `implemented`；新术语入 CONTEXT；D-30+ 落位核对 | 实测回填完整（禁虚构）；参数级失败率对比 M3 基线记录；全量 pytest + ruff 双检绿 | T5/T6/T7 | 评审后终审（真实调用前确认 key） |
+| T1 | ORM 三表 | `investigations`/`evidence_steps`/`hypotheses`（G1/G2/G3 定案形状）；`create_all` 幂等；CHECK 约束照 M2 先例（status 枚举落 DB 层） | pytest 绿：三表建表幂等、FK/唯一约束生效、冻结列字段与架构 §4 逐字段一致断言 | G1–G3 | ready-for-agent |
+| T2 | 证据仓库写入接缝 | `db/evidence_repo.py`：`record_step`/`add_hypothesis`/终态与 DB 写同点（G4 步进即写）；落库后行 id 回填；落库异常冒泡归类 `tool_error`；C3 论证落位 | pytest 绿：步进即写逐行断言、escalated/aborted 已取证部分完整、行 id 指针接口不变（D-25）、写失败熔断路径 | T1 | ready-for-agent |
+| T3 | 报告读库与 JSON 定案 | `GET /investigations/{incident_id}` 注册表换读库；JSON 形状按 G6 定案（含 agent-loop-design 修订回写）；`investigations` 会话级字段入报告 | pytest 绿：报告键集合精确守卫、404 语义（无记录）、escalated 报告读库可查、重复调查覆盖旧行 | T2 | ready-for-agent |
+| T4 | Markdown 最小版导出 | `GET /investigations/{incident_id}/report.md`（G7）；str 模板零新依赖 | pytest 绿：200 + `text/markdown`、内容含全部步/假设/结论/终态 | T3 | ready-for-agent |
+| T5 | 缺口① opening 视图 | `context_manager.build_decision_view`（G8 投影键集）+ loop.py 瘦身；C6 断言 | pytest 绿：view 含 `opening` 键集合断言、loop.py ≤300 行、既有 mock e2e 3/3 不回退 | G8 | ready-for-agent |
+| T6 | 缺口② schema 可见性 | 按 G9 定案：system prompt 附六工具 schema 摘要（A2 模板落位）或 tool_help 工具 | pytest 绿：schema 摘要存在断言、系统提示 ≤1500 tokens、（选 B 时）第 7 工具注册与 D-23 面变更登记 | G9 | ready-for-agent |
+| T7 | 验收断言与门禁 | 「验收标准」节逐条转机械断言（100% 落库/回溯/JSON 比对/边界不破）；架构守卫（C3/C4/C5/C6/A2）全绿 | pytest 绿：验收节断言全绿；全量门禁基线 479/7/98.05% 只增不减 | T1–T6 | ready-for-agent |
+| T8 | 真实实测重跑与收尾 | 两缺口修复后 3 剧本真实调用重跑（**开工前需用户确认 key**，照 M3 issue 08 流程）；步数/耗时/成本/Top-1 如实回填 → 设计文档翻 `implemented`；新术语入 CONTEXT；D-30+ 落位核对 | 实测回填完整（禁虚构）；参数级失败率对比 M3 基线记录；全量 pytest + ruff 双检绿 | T5/T6/T7 | ready-for-agent（真实调用前确认 key） |
 
 ## 风险清单（评审随附，交用户复核后才可派工实现票）
 
@@ -171,13 +171,11 @@ read_when: 评审 M4 方案时；进入 M4 开发前；被问「证据链怎么�
 | 6 | agent-loop-design 修订 = 文档权威变更 | G6 定案含文档回写（示例键名对齐冻结契约），属消除双权威的修正而非契约变更——回写 diff 随 T3 提交，交用户复核 |
 | 7 | 真实实测成本 | M3 实测口径：两轮 6 次合计 ≈¥0.008（单次最高 ¥0.004，R9 单价，来源 issue 08 注记 2026-09-08）；重跑同规模成本可忽略，key 门槛照旧 |
 
-## 评审后动作（评审定案当日执行）
+## 评审后动作（2026-09-08 定案当日已执行）
 
-1. G 表定案结论回填 + 本文件翻 `reviewed`（评审人/日期回填）
-2. `docs/design/decisions.md` **D-30 起**登记定案（逐条过 ADR 三判据自检；方法类不设 D）；**注意 decisions.md 是表格行格式**（`| D-xx |` 照现有表续行）
-3. `CONTEXT.md` 新术语入表（预提案，定案后按实际落）：
-   - **调查记录 / Investigation Record**：`investigations` 表一行——一次调查的会话级落库（终态/结论/failure_mode/步数/成本合计）；_Avoid_：会话记录、报告行
-   - **证据仓库 / Evidence Repository**：session→DB 的落库写入接缝（步进即写、行 id 回填）；_Avoid_：DAO、存储层、持久化层
-4. `.scratch/m4-evidence-chain/` 拆票（**仅用户明确要求继续时**）：spec.md + issues/01–08（与 T1–T8 对应）+ 标签约定照 `docs/agents/issue-tracker.md` 与 `docs/agents/triage-labels.md`
-5. 架构文档回写预告：§4 六表 → 七表（G2 定案后）；agent-loop-design 示例键名修订（G6 定案后，随 T3）
-6. `docs/README.md` 索引行已随草案新增（M4 设计文档条目）；docs/README.md 若有其他索引需同步再核
+1. ✅ G 表定案说明回填 + 本文件翻 `reviewed`（评审人/日期已填）
+2. ✅ `docs/design/decisions.md` 登记 **D-30–D-38**（逐条过 ADR 三判据自检：难以逆转 / 无上下文会意外 / 真实权衡；**注意表格行格式**照现有表续行）
+3. ✅ `CONTEXT.md` 新术语入表（调查记录 / 证据仓库，含 `_Avoid_`）
+4. ⬜ `.scratch/m4-evidence-chain/` 拆票（spec.md + issues/01–08 + 标签约定照 issue-tracker.md）——**仅用户明确要求继续时执行**
+5. ⬜ 架构文档回写随实现票执行：§4 六表 → 七表（G2/D-31）；§3.3 tool_help 措辞按意图兑现注记（G9/D-38）；agent-loop-design 示例键名修订（G6/D-35，随 T3 提交交用户复核）
+6. ✅ `docs/README.md` 索引行已随草案新增（M4 设计文档条目）
