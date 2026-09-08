@@ -14,7 +14,7 @@ dependencies = [
     "structlog>=24.1,<26",
     "prometheus-client>=0.21,<1",
     "pyyaml>=6.0,<7",            # scenarios schema: YAML 加载（M0）
-    "openai>=1.0,<2",            # C5: LLM SDK 只在 oncall.infra.llm 收口（issue 07）
+    "openai>=1.0,<2",            # C5: LLM SDK 只在 infra 收口（llm.py / llm_planner.py）
 ]
 
 [project.optional-dependencies]
@@ -127,6 +127,7 @@ ignore_imports = [
     "oncall.infra.http -> httpx",
     "oncall.infra.llm -> openai",
     "oncall.infra.llm -> anthropic",
+    "oncall.infra.llm_planner -> openai",
 ]
 
 # ───────────────────────── bandit（A6 安全扫描）─────────────────────────

@@ -23,13 +23,16 @@ MAX_INLINE_PROMPT = 200  # A2: 内联超长 prompt 判定阈值（字符）
 HTTP_MODULES = {"httpx", "requests", "urllib3", "aiohttp"}
 LLM_MODULES = {"openai", "anthropic"}
 HTTP_ALLOWED = {"src/oncall/infra/http.py"}  # _rel_module 以仓库根为基准，含 src/ 前缀
-LLM_ALLOWED = {"src/oncall/infra/llm.py"}
+LLM_ALLOWED = {"src/oncall/infra/llm.py", "src/oncall/infra/llm_planner.py"}
 
 # A1 的**实质**防线是 conftest 的 autouse 断网 fixture（pytest-socket 直接禁 socket），
 # import 守卫只是第二道 lint。真实 LLM client 的「SDK 异常 → 契约异常」映射必须在单测
 # 钉死（热切换前提：映射错了 D-07 的 0 漏报兜底就失效），而这需要 import SDK 的异常类型。
 # 显式登记豁免文件（只 import 异常类型、不构造 client），新增文件必须在此登记并写明理由。
-SDK_EXCEPTION_MAPPING_TESTS = {"tests/unit/test_infra_llm.py"}
+SDK_EXCEPTION_MAPPING_TESTS = {
+    "tests/unit/test_infra_llm.py",
+    "tests/unit/test_infra_llm_planner.py",  # 同款：Planner 异常映射单测，只 import openai 异常类型
+}
 MUTABLE_FACTORIES = {"list", "dict", "set", "bytearray", "defaultdict", "Counter"}
 
 # R6（G4）：ingest 主链路零 LLM 依赖——0 漏收不被外部 LLM 依赖拖垮。

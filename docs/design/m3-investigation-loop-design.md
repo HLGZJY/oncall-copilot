@@ -2,7 +2,7 @@
 title: "M3 自主根因调查循环：设计与开发计划"
 summary: "以 incident_id 为入口的自研 ReAct 循环：Planner（JSON mode 结构化决策）+ ToolRegistry（六工具）+ ContextManager + Verifier（规则+LLM 混合）+ PermissionGate；M3/M4 边界（内存证据契约，不建表）；G1–G9 开放点评审与 T1–T8 拆票"
 source: docs/prd.md §4/§7-M3 + docs/architecture/architecture.md §1/§3/§4/§5/§6 + docs/architecture/agent-loop-design.md + docs/design/m2-denoise-classify-design.md（先例）+ docs/design/decisions.md D-03/05/07/08/12/13/16/17/18/19/21 + 评审标准来源（见「评审依据」R1–R9）
-status: reviewed
+status: implemented
 updated: 2026-09-08
 read_when: 评审 M3 方案时；进入 M3 开发前；被问「M3 自主调查循环怎么做」时
 ---
@@ -13,8 +13,8 @@ read_when: 评审 M3 方案时；进入 M3 开发前；被问「M3 自主调查�
 
 `draft`（草案，讨论中）→ `reviewed`（评审通过，可开工）→ `implemented`（已落地，实测数据已回填）→ `superseded`（被后续设计取代，注明替代文档链接）
 
-- **当前状态**：`reviewed`（2026-09-08 G1–G9 全部评审定案——用户逐条拍板采纳推荐解；D-22–D-29 已登记 `decisions.md`，新术语已入 `CONTEXT.md`；进入实现票派工阶段）
-  - 上一状态 `draft`（2026-09-08 草案完成）
+- **当前状态**：`implemented`（2026-09-08 T8 收官回填——mock 端到端 3 剧本规则匹配级 3/3 命中；真实 LLM 实测回填完成，Top-1 首版 0/3，两个结构缺口已注记 issue 08 待 M4 处理；门禁 479 passed / 4 skipped / 98.05%）
+  - 上一状态 `reviewed`（2026-09-08 G1–G9 评审定案）；再上一状态 `draft`（2026-09-08 草案完成）
 - **评审人 / 评审日期**：用户逐条拍板（G1–G9 全部采纳推荐默认解），2026-09-08；评审依据由 AI 检索官方标准提供（R1–R9，含 URL 与取用日期），用户保留推翻权（推翻须回退 `draft` 并重开对应 issue）
 - **关联 issue**：`.scratch/m3-investigation-loop/`（spec.md + issues/01–08，与 T1–T8 一一对应；定案后 T5/T6 已转 `ready-for-agent`）
 - **设计期口径**：LLM 全 mock（2026-09-08 拍板，照 M2 先例）——零真实调用、不需要 API key、不读 `$HOME/.oncall-llm-env`；真实调用与实测回填留实现票（T8，开工前需用户确认 key）
@@ -93,15 +93,15 @@ pyproject C3 契约：`oncall.harness` 禁止 import `oncall.ingest / classify /
 
 > 可实测、可判定；实测后回填打勾，不得虚构（实现票 T8 完成时回填本节）。设计期全 mock，成本口径为 R9 单价估算。
 
-- [ ] **3 剧本 mock 端到端自主收束**（PRD §7-M3）：`cpu-spike` / `slow-sql` / `queue-backlog` 经 `POST /investigate` 走至 conclusion，结论根因与 golden `root_cause` 规则匹配级命中（关键实体+动作词；LLM-as-judge 归 M7）
-- [ ] **步数 ≤15 / 总时长 ≤5 分钟**：3 剧本实测回填（mock 期即可测步数与时长）
-- [ ] **LLM 成本 ≤¥0.5**：真实调用轮按 usage × R9 单价实测回填；设计期估算 ≈¥0.02/次调查（15 步 Planner + ≤3 次 Verifier 裁决，见 §风险清单测算），有 20× 余量
-- [ ] **证据链三必须**：每步 `output_json` + `output_summary` 双存；假设带 `confirmed`/`rejected`；`InvestigationSession` 可导出 JSON 报告（steps/hypotheses/conclusion/confidence，照 agent-loop-design 数据形状）
-- [ ] **失败模式六值可逐值触发**：`tool_error` / `plan_error` / `timeout` / `hallucination` / `no_signal` / `premature_stop` 各至少 1 个单测钉死判定规则（G7）
-- [ ] **防伪 Agent 三判据机械断言全绿**（G8 三组单测：步骤序列由 Planner 输出决定 / 不调 get_topology 亦正常收束 / 推翻换假设 + 重试回退 + 第 15 步强制 escalated）
-- [ ] **架构守卫全绿**：C3（harness 零 import classify/ingest/api 等）+ C4/C5（HTTP/LLM SDK 只在 infra）+ C6（单文件 ≤300 行）+ A2（prompt 模板落位）+ import-linter
-- [ ] **全量测试门禁不回退**：pytest + ruff check + ruff format --check 绿，coverage ≥80%（基线 **280 passed / 4 skipped / 97.12%**）
-- [ ] **真实 LLM 实测回填**（T8，开工前需用户确认 key）：3 剧本真实调用回填步数/耗时/成本/结论，首版 Top-1 结果记录（口径复核归 M7）
+- [x] **3 剧本 mock 端到端自主收束**（PRD §7-M3）：`cpu-spike` / `slow-sql` / `queue-backlog` 经 `POST /investigate` 走至 conclusion，结论根因与 golden `root_cause` 规则匹配级命中（关键实体+动作词；LLM-as-judge 归 M7）——**实测（T8-A，2026-09-08）：3/3 命中**，各 3 步证据步 + golden root_cause 同源自证（`tests/e2e/`，D-18 替身证据不含 root_cause）
+- [x] **步数 ≤15 / 总时长 ≤5 分钟**：3 剧本实测回填（mock 期即可测步数与时长）——**实测：mock 各 3 步 / <0.2s；真实轮 ≤5 步 / ≤8.0s**
+- [x] **LLM 成本 ≤¥0.5**：真实调用轮按 usage × R9 单价实测回填；设计期估算 ≈¥0.02/次调查（15 步 Planner + ≤3 次 Verifier 裁决，见 §风险清单测算），有 20× 余量——**实测：两轮 6 次调查合计 ≈¥0.008（单次最高 ¥0.004），余量 >60×**
+- [x] **证据链三必须**：每步 `output_json` + `output_summary` 双存；假设带 `confirmed`/`rejected`；`InvestigationSession` 可导出 JSON 报告（steps/hypotheses/conclusion/confidence，照 agent-loop-design 数据形状）——T6/T7 契约测试钉死（`test_harness_loop.py` / `test_investigation_api.py` 键集合精确守卫）
+- [x] **失败模式六值可逐值触发**：`tool_error` / `plan_error` / `timeout` / `hallucination` / `no_signal` / `premature_stop` 各至少 1 个单测钉死判定规则（G7）——T6 `test_harness_loop_mechanisms.py`
+- [x] **防伪 Agent 三判据机械断言全绿**（G8 三组单测：步骤序列由 Planner 输出决定 / 不调 get_topology 亦正常收束 / 推翻换假设 + 重试回退 + 第 15 步强制 escalated）——T6
+- [x] **架构守卫全绿**：C3（harness 零 import classify/ingest/api 等）+ C4/C5（HTTP/LLM SDK 只在 infra）+ C6（单文件 ≤300 行）+ A2（prompt 模板落位）+ import-linter——`test_architecture_guards.py` 全绿（llm_planner.py 已登记 LLM_ALLOWED，pyproject ignore_imports 已扩）
+- [x] **全量测试门禁不回退**：pytest + ruff check + ruff format --check 绿，coverage ≥80%（基线 **280 passed / 4 skipped / 97.12%**）——**实测（T8 收官）：479 passed / 7 skipped / 98.05%**（+3 mock e2e、+14 Planner client 契约；7 skipped 含真实 e2e 花钱开关默认跳过 3）
+- [x] **真实 LLM 实测回填**（T8，用户已确认 key）：3 剧本真实调用回填步数/耗时/成本/结论，首版 Top-1 结果记录（口径复核归 M7）——**实测（2026-09-08 两轮 6 次）：Top-1 首版 0/3，全部未产生有效根因结论；畸形率（JSON 契约）≈0%，主失败模式为参数级失败与同参绕圈熔断。根因 = 两个结构缺口：① Planner 视图缺事件锚点（planner.py 接缝承诺 D-25「记忆摘要+事件锚点」，loop 实装 view 仅 steps/hypotheses/notices——模型开局面盲）；② 工具入参 schema 不可见且六工具无 tool_help（架构 §3.3 承诺 just-in-time 查详情通道，D-23 冻结六工具未含）。详见 issue 08 注记；两缺口修复建议随 M4 派发，修后重跑实测**
 
 ## 依赖
 

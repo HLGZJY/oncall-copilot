@@ -88,14 +88,41 @@ def _direction_in_window(doc: dict[str, Any], start: datetime, end: datetime) ->
 
 
 def make_golden_handlers(doc: dict[str, Any]) -> dict[str, Any]:
-    """取证四工具 Fetcher 替身：返回值全部派生自 golden timeline（D-18 同源）。"""
+    """取证四工具 Fetcher 替身：返回值全部派生自 golden timeline（D-18 同源）。
+
+    每个返回值都带完整 `timeline`（runs 时间窗 + 告警条目）——真实 Planner 的
+    调查视图缺事件锚点（harness 缺口，issue 08 注记记录），替身侧以「任意一次
+    成功调用即可见全量 golden 上下文」补偿，保证评价公平；仍不含
+    root_cause / investigation_path / remediation（不把答案喂给被评对象）。
+    """
+
+    def timeline_evidence() -> dict[str, Any]:
+        return {
+            "runs": [
+                {"started_at": run["started_at"], "recovered_at": run["recovered_at"]}
+                for run in doc["runs"]
+            ],
+            "alerts": [
+                {
+                    "alert_name": entry["alert_name"],
+                    "labels": entry["labels"],
+                    "fired_at": entry["fired_at"],
+                    "resolved_at": entry["resolved_at"],
+                }
+                for entry in _timeline_entries(doc)
+            ],
+        }
 
     def make(tool: str, payload_key: str, build: Any) -> Any:
         def handler(args: BaseModel, *, timeout_seconds: float) -> ToolResult:
             return ToolResult(
                 tool=tool,
                 status=ToolStatus.OK,
-                data={"scenario": doc["scenario"], payload_key: build(args)},
+                data={
+                    "scenario": doc["scenario"],
+                    "timeline": timeline_evidence(),
+                    payload_key: build(args),
+                },
                 meta={"source": "golden-dev-timeline"},
             )
 
@@ -220,6 +247,31 @@ def make_e2e_components(planner: Any, doc: dict[str, Any]) -> LoopComponents:
         registry=registry,
         gate=PermissionGate(now=now),
         verifier=Verifier(judge=MockVerifierJudge(script=verdicts, default=verdicts[-1])),
+        now=now,
+    )
+
+
+def make_real_components(planner: Any, doc: dict[str, Any]) -> LoopComponents:
+    """B 段真实 Planner 组装：golden 替身不变，裁决接缝留 mock（default=证实）。
+
+    判分范围仅 Planner（issue 08 注记）：假设裁决默认证实以让调查正常收敛，
+    假设质量复核（真判官 + 人工抽检 20%）归 M7。时钟真实 UTC：时长闸按
+    真实耗时生效，真实调查超 300s 熔断转人工的语义保持开启。
+    """
+
+    def now() -> datetime:
+        return datetime.now(UTC)
+
+    registry = ToolRegistry(now=now)
+    register_six_tools(registry, make_golden_handlers(doc))
+    verdict = VerifierVerdict(
+        supported=True, reason="T8 裁决接缝留 mock（判分范围仅 Planner，M7 换真判官）"
+    )
+    return LoopComponents(
+        planner=planner,
+        registry=registry,
+        gate=PermissionGate(now=now),
+        verifier=Verifier(judge=MockVerifierJudge(default=verdict)),
         now=now,
     )
 
