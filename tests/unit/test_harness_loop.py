@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, ClassVar
 
 from oncall.harness.loop import (
     MAX_STEPS,
@@ -222,6 +222,46 @@ class TestG8AntiFakeCriteria:
         result = run_investigation(make_session(), make_components(MockPlanner(script=script)))
         assert result.status is SessionStatus.ESCALATED
         assert result.step_count == MAX_STEPS
+
+
+# ---------------------------------------------------------------------------
+# M4-05 / T5（D-37）：决策视图 opening 键（loop 接缝）
+# ---------------------------------------------------------------------------
+
+
+class TestDecisionViewOpeningSeam:
+    _CARD: ClassVar[dict[str, Any]] = {
+        "alert": {
+            "labels": {"alertname": "DemoApiGwHighLatency", "job": "api-gw"},
+            "source": "alertmanager",
+            "status": "deduped",
+            "fired_at": "2026-09-06T06:28:21+00:00",
+            "last_fired_at": "2026-09-06T06:28:21+00:00",
+        },
+        "context": {
+            "sources": [
+                {"source": "metrics", "status": "ok", "items": [], "meta": {}},
+            ]
+        },
+        "generated_at": "2026-09-08T08:00:00Z",
+    }
+
+    def test_view_contains_opening_key_default_none(self):
+        """run_investigation 不传 opening → view 含 opening 键且为 None（既有 3 剧本回放不炸）。"""
+        planner = MockPlanner(script=[conclusion_decision("收束")])
+        run_investigation(make_session(), make_components(planner))
+        view = planner.calls[0]
+        assert set(view) == {"system_prompt", "steps", "hypotheses", "notices", "opening"}
+        assert view["opening"] is None
+
+    def test_view_opening_projection_via_injection(self):
+        """opening 关键字注入 → 透传至 view（D-37 投影口径由 context_manager 单测钉死）。"""
+        planner = MockPlanner(script=[conclusion_decision("收束")])
+        run_investigation(make_session(), make_components(planner), opening=self._CARD)
+        opening = planner.calls[0]["opening"]
+        assert opening["alertname"] == "DemoApiGwHighLatency"
+        assert opening["source"] == "alertmanager"
+        assert opening["context_status"] == {"metrics": "ok"}
 
 
 # ---------------------------------------------------------------------------

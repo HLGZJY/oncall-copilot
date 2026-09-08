@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Any
 
 from oncall.db.evidence_repo import persist_hypothesis, persist_step
-from oncall.harness.context_manager import build_system_prompt, summarize_step, visible_hypotheses
+from oncall.harness.context_manager import build_decision_view
 from oncall.harness.permission import PermissionDecision
 from oncall.harness.planner import (
     PlannerClient,
@@ -88,6 +88,7 @@ class _LoopState:
     """循环过程状态（C8：计数器封装进类，不落模块级）。"""
 
     started_at: datetime
+    opening: dict[str, Any] | None = None  # D-17 卡片（D-37 开局锚点，API 注入）
     notices: list[str] = field(default_factory=list)
     totals: dict[tuple[str, str], int] = field(default_factory=dict)
     last_key: tuple[str, str] | None = None
@@ -113,10 +114,14 @@ def _escalate(session: InvestigationSession, mode: str, reason: str) -> Investig
 
 
 def run_investigation(
-    session: InvestigationSession, components: LoopComponents, *, max_steps: int = MAX_STEPS
+    session: InvestigationSession,
+    components: LoopComponents,
+    *,
+    max_steps: int = MAX_STEPS,
+    opening: dict[str, Any] | None = None,
 ) -> InvestigationResult:
-    """主循环入口：推进 step 至终止三出口之一，返回收尾结构（架构 §3.1 骨架）。"""
-    state = _LoopState(started_at=components.now())
+    """主循环入口：推进 step 至终止三出口之一；opening 经依赖注入进决策视图（D-37）。"""
+    state = _LoopState(started_at=components.now(), opening=opening)
     while True:
         if session.step_count >= max_steps:  # 步数闸（MAX_STEPS 不进 prompt，§3.4）
             mode = FailureMode.TOOL_ERROR if state.pending_tool_error else None
@@ -138,13 +143,8 @@ def run_investigation(
 def _decide_with_retry(
     session: InvestigationSession, components: LoopComponents, state: _LoopState
 ) -> PlannerDecision | InvestigationResult:
-    """取决策：畸形重试 ≤2 耗尽归 plan_error；超时不重试归 timeout（D-22）。"""
-    view = {
-        "system_prompt": build_system_prompt(),
-        "steps": [summarize_step(step) for step in session.steps],
-        "hypotheses": [h.text for h in visible_hypotheses(session)],  # D-27③ 复用 T4
-        "notices": list(state.notices),
-    }
+    """取决策：畸形重试 ≤2 耗尽归 plan_error；超时不重试归 timeout（D-22）；视图收口 D-37。"""
+    view = build_decision_view(session, state.notices, state.opening)
     for _ in range(PLANNER_RETRY_LIMIT + 1):
         try:
             return components.planner.decide(view)

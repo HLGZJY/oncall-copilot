@@ -20,7 +20,7 @@ token 估算双口径说明：Registry 管工具输出截断用「字符数 ÷4�
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from oncall.harness.session import HypothesisStatus
 from oncall.harness.tools.registry import TOOL_SPECS
@@ -33,6 +33,7 @@ __all__ = [
     "SUMMARY_TEMPLATE",
     "SYSTEM_PROMPT_TOKEN_LIMIT",
     "TOKEN_BUDGET",
+    "build_decision_view",
     "build_system_prompt",
     "estimate_tokens",
     "summarize_step",
@@ -155,3 +156,43 @@ def visible_hypotheses(
     if count < threshold:
         return list(session.hypotheses)
     return [h for h in session.hypotheses if h.status is not HypothesisStatus.REJECTED]
+
+
+# D-37 定案键集（来源拆分）：前四取 labels，后四取 alert 本体；键集合一次到位冻结
+_OPENING_LABEL_KEYS = ("alertname", "instance", "job", "severity")
+_OPENING_ALERT_KEYS = ("source", "status", "fired_at", "last_fired_at")
+
+
+def project_opening(opening: dict[str, Any] | None) -> dict[str, Any] | None:
+    """D-17 卡片 → 开局锚点精简投影（D-37）：8 字段 + 三源 status 摘要。
+
+    投影而非全卡片：context.items 与 steps 摘要重复、挤 token 预算；只补
+    「服务名 + 时间窗 + 源可用性」这类开局锚点。卡片缺字段容缺 None，
+    键集合稳定；时间字段沿用卡片内字符串原样（序列化口径在上游 views 层）。
+    """
+    if opening is None:
+        return None
+    alert = opening.get("alert") or {}
+    labels = alert.get("labels") or {}
+    projected: dict[str, Any] = {key: labels.get(key) for key in _OPENING_LABEL_KEYS}
+    projected.update({key: alert.get(key) for key in _OPENING_ALERT_KEYS})
+    sources = (opening.get("context") or {}).get("sources") or []
+    projected["context_status"] = {source.get("source"): source.get("status") for source in sources}
+    return projected
+
+
+def build_decision_view(
+    session: InvestigationSession, notices: list[str], opening: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Planner 决策视图（T5/D-37）：四键原样搬入 + `opening` 事件锚点键。
+
+    键集合稳定（opening 缺省 None 时键仍存在）——MockPlanner script 回放
+    与既有测试的隐性契约；notices 复制传入序列，不改调用方状态。
+    """
+    return {
+        "system_prompt": build_system_prompt(),
+        "steps": [summarize_step(step) for step in session.steps],
+        "hypotheses": [h.text for h in visible_hypotheses(session)],  # D-27③ 复用 T4
+        "notices": list(notices),
+        "opening": project_opening(opening),
+    }

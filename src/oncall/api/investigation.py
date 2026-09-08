@@ -222,7 +222,9 @@ def create_investigation_router(engine: Engine, deps: InvestigationDeps) -> APIR
                 run_session = InvestigationSession(incident_id=req.incident_id)  # 每次新建会话
                 repo = EvidenceRepository(engine)  # 步进即写接缝（D-33；实例=单次调查）
                 repo.begin(run_session)  # 覆盖清理 + running 行（D-31）
-                result = run_investigation(run_session, replace(deps.components, evidence=repo))
+                result = run_investigation(
+                    run_session, replace(deps.components, evidence=repo), opening=opening
+                )
                 repo.finalize(result, finished_at=deps.components.now())  # 终态写行（D-34）
             except Exception as exc:  # harness 非预期异常：API 层兜底不泄漏堆栈
                 raise HTTPException(

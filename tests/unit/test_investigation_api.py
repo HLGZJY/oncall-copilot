@@ -319,6 +319,36 @@ class TestOpeningAnchor:
         assert set(card) == {"alert", "context", "generated_at"}  # D-17 键面完整
         assert card["generated_at"]
 
+    def test_opening_projection_reaches_decision_view(self):
+        """M4-05 注入链 e2e：API opening_builder 产出卡片 → run_investigation → Planner 视图。"""
+        script = [tool_decision(), conclusion_decision("收束")]
+        planner = MockPlanner(script=script)
+        client, engine = _client_with_components(make_components(planner))
+        incident_id, _ = _seed_incident(engine)
+
+        resp = client.post("/investigate", json={"incident_id": incident_id})
+
+        assert resp.status_code == 200
+        opening = planner.calls[0]["opening"]
+        assert set(opening) == {
+            "alertname",
+            "instance",
+            "job",
+            "severity",
+            "source",
+            "status",
+            "fired_at",
+            "last_fired_at",
+            "context_status",
+        }
+        assert opening["alertname"] == "DemoApiGwHighLatency"
+        assert opening["job"] == "api-gw"
+        assert opening["severity"] == "critical"
+        assert opening["instance"] is None  # 种子告警无 instance → 容缺 None
+        assert opening["fired_at"] == FIRED_AT.isoformat()
+        assert "items" not in opening  # 投影非全卡片（D-37）
+        assert set(opening["context_status"]) == {"metrics", "topology", "changes"}
+
 
 # ---------------------------------------------------------------------------
 # GET /investigations/{incident_id} 契约
