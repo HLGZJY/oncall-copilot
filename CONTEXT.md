@@ -54,6 +54,7 @@ read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增
 | 工具结果 / Tool Result | ToolRegistry 执行工具后的统一封装：`{tool, status: ok\|empty\|error\|unavailable, data, meta}`（D-23）；unavailable 语义对齐 D-16——依赖缺失 ≠ 调查失败，工具层永不向上抛原始异常 | 返回值、tool output |
 | 决策输出 / Planner Decision | Planner 每步的结构化决策：`{thought, next_tool, args}`（选工具）或 `{conclusion}`（收束），二选一互斥，Pydantic 校验（D-22） | action、指令、决策 JSON |
 | 转人工 / Escalate to Human | 步数 = 15 或 Harness 熔断时的受控终止出口：session 翻 `escalated`、incident 保持 `investigating`、已取证证据链经报告接口可查（D-28）——**不是丢弃** | 求助、上报 |
+| 调查收尾结构 / Investigation Result | 主循环终止时返回的收尾结构：incident 锚点 + 终态 + 结论 + `failure_mode` 六值归类 + 步数/tokens/成本合计 + 证据步与假设终态快照；M7 评测矩阵列的直接来源（D-28） | 调查报告（报告经 `GET /investigations/{id}` 出口）、结果对象 |
 | 双通道编排 / Dual-Channel Orchestration | M2 的分类编排顺序（issue 04 / G4）：**规则通道先行（命中即直判落库）→ 未决行进 LLM 通道 → 同一事务落 `classification_json` + status 翻 classified**；只由独立入口 `POST /classify` 触发，不串联 `/ingest`（R6）；已 classified 行跳过（幂等） | 分类流水线、串联分类 |
 | few-shot 样本池 / Few-Shot Pool | LLM 通道 prompt 的示例样本集合：loader 只从 `datasets/golden/dev/` 取、按 golden 可选 `classification` 字段分组（缺省 incident）、每态 K 条；确定性产出（场景名字典序） | 示例库、模板池 |
 | 验证剧本 / Validation Scenario | M2 端到端验收用的 3 个剧本：`slow-sql`（基础设施）/ `protocol-mismatch`（业务语义层）/ `false-positive-flap`（历史误报，issue 06 落地）；**永不进入 few-shot 样本池**（防自证泄漏） | 验收集（holdout 是另一个概念） |
