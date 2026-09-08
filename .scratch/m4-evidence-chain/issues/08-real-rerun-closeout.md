@@ -77,3 +77,9 @@ Blocked by: 05, 06, 07
 - `tests/integration/test_m4_real_rerun.py`（真实轮 harness，花钱开关 `ONCALL_RUN_LLM_E2E=1`；Planner/Registry 计数代理只观测不改行为；生产代码零改动、既有测试零改动）
 - 落位核对：D-30–D-38 均在 `decisions.md`；`CONTEXT.md` 无新增术语（调查记录/证据仓库已随评审入表）；架构 §4 七表条目（`investigations`）T8 终核补落；agent-loop-design 示例键名修订（T3 已带）终核 ✅；spec.md 08 行翻 resolved
 - **M4 里程碑 8/8 resolved 收官**
+
+### 遗留风险清单（移交 M7，2026-09-08 收官时登记）
+
+1. **Top-1 复核口径**：规则匹配级判分（D-29）0/3 可能存在判分宽严问题——M7 须以 LLM-as-judge + 人工抽检 20% 复核后再下结论（本票不改判分口径）。
+2. **同参绕圈失败模式**：6 次中 4 次熔断于此（get_topology×3 / query_kb×1）；三候选方向 = 换模型档位 / 视图层绕圈引导 / 判分口径校准，需 M7 评测数据支撑后立决策点（复议结论：不随本票另开 issue）。
+3. **holdout 同步**：D-21 的 `HOLDOUT_SYNC_PENDING` 过渡豁免仍挂起，M7 前须同步 holdout 后清空还原硬约束（golden 树校验 R2 成对规则恢复全量）。
