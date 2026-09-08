@@ -18,7 +18,7 @@ incidents 行）。
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException
@@ -26,6 +26,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from oncall.db import Incident
+from oncall.db.evidence_repo import EvidenceRepository
 from oncall.harness.loop import InvestigationResult, LoopComponents, run_investigation
 from oncall.harness.session import HypothesisStatus, InvestigationSession
 
@@ -141,10 +142,11 @@ def create_investigation_router(engine: Engine, deps: InvestigationDeps) -> APIR
             alert_id = incident.alert_ids[0] if incident.alert_ids else None
             try:
                 opening = deps.opening_builder(session, alert_id) if alert_id is not None else None
-                result = run_investigation(
-                    InvestigationSession(incident_id=req.incident_id),  # 踩坑⑪：每次新建会话
-                    deps.components,
-                )
+                run_session = InvestigationSession(incident_id=req.incident_id)  # 每次新建会话
+                repo = EvidenceRepository(engine)  # 步进即写接缝（D-33；实例=单次调查）
+                repo.begin(run_session)  # 覆盖清理 + running 行（D-31）
+                result = run_investigation(run_session, replace(deps.components, evidence=repo))
+                repo.finalize(result, finished_at=deps.components.now())  # 终态写行（D-34）
             except Exception as exc:  # harness 非预期异常：API 层兜底不泄漏堆栈
                 raise HTTPException(
                     status_code=500, detail="调查执行发生非预期异常，已中止"

@@ -1,8 +1,8 @@
 """主循环 Loop（架构 §3.1，D-27/D-28 定案；Loop 只编排不判断）。
 
-每步：Planner 决策 → 重复检测 → PermissionGate → Registry 执行 → EvidenceStep
-100% 记录 → 规则校验 → 假设流转 → 预算检查；组件全部构造注入（G8 判据 1）。
-假设文本取自决策输出 `thought`（D-22 协议唯一 prose 字段，协议冻结）。
+每步：Planner 决策 → 重复检测 → PermissionGate → 工具执行 → 步进即写落库（D-33）→
+规则校验 → 假设流转 → 预算检查；组件全部构造注入（G8 判据 1）；假设文本取自
+决策输出 thought（D-22 协议唯一 prose 字段，协议冻结）。
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from oncall.db.evidence_repo import persist_hypothesis, persist_step
 from oncall.harness.context_manager import build_system_prompt, summarize_step, visible_hypotheses
 from oncall.harness.permission import PermissionDecision
 from oncall.harness.planner import (
@@ -63,6 +64,7 @@ class LoopComponents:
     gate: Any  # PermissionGate
     verifier: Verifier
     now: Callable[[], datetime]
+    evidence: Any = None  # EvidenceRepository（D-33 步进即写接缝；None 不写库）
 
 
 @dataclass
@@ -195,20 +197,20 @@ def _execute_step(
         state.notices.append(_FALLBACK_TOOL_ERROR.format(tool=tool, reason=str(exc)))
         return None
     result = execution.result  # EvidenceStep 100% 记录：原始输出与摘要双存（G4）
-    session.record_step(
-        EvidenceStep(
-            step_no=session.step_count + 1,
-            thought=decision.thought,
-            tool=result.tool,
-            input_json=dict(decision.args or {}),
-            output_json={"status": result.status.value, "data": result.data, "meta": result.meta},
-            output_summary=execution.output_summary,
-            tokens=execution.tokens,
-            cost_cny=execution.cost_cny,
-            latency_ms=execution.latency_ms,
-            ts=execution.ts,
-        )
+    step = EvidenceStep(
+        step_no=session.step_count + 1,
+        thought=decision.thought,
+        tool=result.tool,
+        input_json=dict(decision.args or {}),
+        output_json={"status": result.status.value, "data": result.data, "meta": result.meta},
+        output_summary=execution.output_summary,
+        tokens=execution.tokens,
+        cost_cny=execution.cost_cny,
+        latency_ms=execution.latency_ms,
+        ts=execution.ts,
     )
+    if not persist_step(components.evidence, session, step):
+        return _build_result(session, FailureMode.TOOL_ERROR)
     findings = run_rule_checks(session, decision, result=result)
     bad = next((f for f in findings if f.check == "hallucination" and not f.ok), None)
     if bad is not None:  # D-28：规则层检出臆测引用 → 熔断归类
@@ -221,7 +223,6 @@ def _execute_step(
         state.pending_tool_error = True
         reason = str(execution.result.meta.get("reason", "未知错误"))
         state.notices.append(_FALLBACK_TOOL_ERROR.format(tool=tool, reason=reason))
-    return None
 
 
 def _update_hypothesis(
@@ -237,7 +238,8 @@ def _update_hypothesis(
         state.notices.append(_DEDUP_NOTICE.format(text=decision.thought))
         return None
     hypothesis = Hypothesis(text=decision.thought, supporting_steps=[session.step_count])
-    session.add_hypothesis(hypothesis)
+    if not persist_hypothesis(components.evidence, session, hypothesis):
+        return _build_result(session, FailureMode.TOOL_ERROR)
     outcome = components.verifier.request_judgment(session, hypothesis, timing="hypothesis")
     if outcome.verdict is None:
         return None
