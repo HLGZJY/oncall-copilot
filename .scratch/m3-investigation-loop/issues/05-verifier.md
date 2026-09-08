@@ -1,11 +1,11 @@
-Status: ready-for-human
+Status: ready-for-agent
 Blocked by: 03, 04
 
-# 05 Verifier：规则层 + LLM 裁决接缝（T5 / G5 待定案）
+# 05 Verifier：规则层 + LLM 裁决接缝（T5 / G5 定案 = D-26）
 
-> **ready-for-human 原因**：Verifier 形态（纯规则 / LLM 每步 / 混合）是设计文档 G5 开放点，属架构取舍，待用户评审拍板后方可派工。本票票面按**推荐解（规则+LLM 混合）**预写，定案被推翻时本票重写。
+> **就绪态终审**：G5 已于 2026-09-08 定案（用户采纳推荐解，登记 D-26），本票转 `ready-for-agent`；票面即定案口径。
 
-## 任务（按 G5 推荐解）
+## 任务（D-26 定案口径）
 
 - **规则层**（每步零成本确定性校验）：ToolResult 状态检查 / args 与工具 schema 合法性 / 假设-证据步引用存在性（supporting_steps/against_steps 指向的 step_no 必须存在）/ **hallucination 判定**——结论或假设引用的工具输出在 session 中不存在即检出
 - **LLM 裁决接缝**：两个触发时机——新假设提出时、收束判定时，**每次调查 ≤3 次**；`VerifierJudge` Protocol + Mock 实现（照 MockPlanner 夹具风格）；证伪导向独立 prompt（生成者与评判者分离，架构 §1）；裁决输出 `{supported: bool, reason}`，不生成新计划（架构 §3.2）

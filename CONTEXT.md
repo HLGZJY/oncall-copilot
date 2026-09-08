@@ -2,7 +2,7 @@
 title: "CONTEXT.md — 共享语言"
 summary: "OnCall Copilot 的术语唯一权威：命名（代码/issue/测试/文档）一律用这里的词，新术语当场入表"
 status: active
-updated: 2026-09-07
+updated: 2026-09-08
 read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增概念时
 ---
 
@@ -48,6 +48,11 @@ read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增
 | 规则通道 / Rule Channel | M2 双通道中的确定性谓词预筛层：每条规则只判「误报直判」或「放行」，**不判真实**；能写成确定性谓词的才进规则通道 | 规则引擎、预分类、过滤器 |
 | 规则名 / Rule Name | 规则通道中每条谓词规则的稳定标识，统计报告按其归因（落 `reason` 前缀 `[name]`）；初始集：`resolved_only_ghost`（resolved-only 幽灵通知）/ `maintenance_window`（维护窗口/静默期）/ `stale_replay`（重放/迟到期已失效） | 规则 ID、规则编号 |
 | LLM 通道 / LLM Channel | M2 双通道中的 few-shot 兜底分类层：只处理规则未决的告警，结构化输出 `{verdict, confidence, reason}`，置信度低于阈值落风险 | 大模型分类、智能分类 |
+| 调查会话 / Investigation Session | M3 调查的**唯一可变状态对象**：incident 锚点 + 步计数 + 状态（running/concluded/escalated/aborted）+ 证据步与假设集合；组件不可变、状态单一（OpenHands 原则），序列化即断点恢复工件；M3 内存持有，M4 建 ORM 表（D-25） | 会话状态、上下文对象 |
+| 证据步 / Evidence Step | 调查中一步 thought/tool/input/output 的有序记录单元，`output_json`（原始输出，可回溯）与 `output_summary`（进上下文的摘要）**双存**；字段对齐架构 §4 `evidence_steps` 冻结列 | 步骤记录、trace 步 |
+| 工具结果 / Tool Result | ToolRegistry 执行工具后的统一封装：`{tool, status: ok\|empty\|error\|unavailable, data, meta}`（D-23）；unavailable 语义对齐 D-16——依赖缺失 ≠ 调查失败，工具层永不向上抛原始异常 | 返回值、tool output |
+| 决策输出 / Planner Decision | Planner 每步的结构化决策：`{thought, next_tool, args}`（选工具）或 `{conclusion}`（收束），二选一互斥，Pydantic 校验（D-22） | action、指令、决策 JSON |
+| 转人工 / Escalate to Human | 步数 = 15 或 Harness 熔断时的受控终止出口：session 翻 `escalated`、incident 保持 `investigating`、已取证证据链经报告接口可查（D-28）——**不是丢弃** | 求助、上报 |
 | 双通道编排 / Dual-Channel Orchestration | M2 的分类编排顺序（issue 04 / G4）：**规则通道先行（命中即直判落库）→ 未决行进 LLM 通道 → 同一事务落 `classification_json` + status 翻 classified**；只由独立入口 `POST /classify` 触发，不串联 `/ingest`（R6）；已 classified 行跳过（幂等） | 分类流水线、串联分类 |
 | few-shot 样本池 / Few-Shot Pool | LLM 通道 prompt 的示例样本集合：loader 只从 `datasets/golden/dev/` 取、按 golden 可选 `classification` 字段分组（缺省 incident）、每态 K 条；确定性产出（场景名字典序） | 示例库、模板池 |
 | 验证剧本 / Validation Scenario | M2 端到端验收用的 3 个剧本：`slow-sql`（基础设施）/ `protocol-mismatch`（业务语义层）/ `false-positive-flap`（历史误报，issue 06 落地）；**永不进入 few-shot 样本池**（防自证泄漏） | 验收集（holdout 是另一个概念） |
@@ -74,7 +79,7 @@ read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增
 | 黄金集 / Golden Set | 预标注正确根因与期望处置的评测集 | 测试集（测代码 vs 测 Agent 行为） |
 | 评测台 / Eval Harness | 跑剧本、对答案、出指标矩阵（命中/步数/耗时/成本/失败模式）的设施 | 评测框架 |
 | Top-1 / Top-3 命中率 | 正确根因位于模型排序前 1 / 前 3 位的比例 | 准确率 |
-| 失败模式 / Failure Mode | 失败**强制**归为五类之一：`tool_error` / `plan_error` / `timeout` / `hallucination` / `no_signal` | 错误类型 |
+| 失败模式 / Failure Mode | 失败**强制**归为五类之一：`tool_error` / `plan_error` / `timeout` / `hallucination` / `no_signal`；另有 `premature_stop`（步数过少且无 confirmed 假设即收束）——M3 预标注、M7 评测复核（D-28） | 错误类型 |
 | 开发集 / 保留集 | 评测隔离：开发集调参，保留集只用于最终结论，防泄漏 | 训练集/测试集 |
 | 降噪率 / Denoise Rate | 降噪效果核心指标：(R − I) / R，R = Σ `dedup_count`（有效 firing 投递数，D-15 口径，不是行数），I = 判为 incident 的逻辑告警数；R=0 不除零，报告标注「无有效投递」（D-20） | 噪声过滤率、压缩比 |
 | 漏报 / Missed Alert | golden 标注 incident 的逻辑告警被判 false_positive 的数量，验收硬口径必须 = 0；risk 不算漏报（D-07 中间态），单列 risk_observed 观察（D-20） | 漏判、漏检 |

@@ -2,7 +2,7 @@
 title: "M3 自主根因调查循环：设计与开发计划"
 summary: "以 incident_id 为入口的自研 ReAct 循环：Planner（JSON mode 结构化决策）+ ToolRegistry（六工具）+ ContextManager + Verifier（规则+LLM 混合）+ PermissionGate；M3/M4 边界（内存证据契约，不建表）；G1–G9 开放点评审与 T1–T8 拆票"
 source: docs/prd.md §4/§7-M3 + docs/architecture/architecture.md §1/§3/§4/§5/§6 + docs/architecture/agent-loop-design.md + docs/design/m2-denoise-classify-design.md（先例）+ docs/design/decisions.md D-03/05/07/08/12/13/16/17/18/19/21 + 评审标准来源（见「评审依据」R1–R9）
-status: draft
+status: reviewed
 updated: 2026-09-08
 read_when: 评审 M3 方案时；进入 M3 开发前；被问「M3 自主调查循环怎么做」时
 ---
@@ -13,9 +13,10 @@ read_when: 评审 M3 方案时；进入 M3 开发前；被问「M3 自主调查�
 
 `draft`（草案，讨论中）→ `reviewed`（评审通过，可开工）→ `implemented`（已落地，实测数据已回填）→ `superseded`（被后续设计取代，注明替代文档链接）
 
-- **当前状态**：`draft`（2026-09-08 草案完成，待 G1–G9 评审拍板；用户保留逐条推翻权）
-- **评审人 / 评审日期**：（评审通过后回填；流程照 M2 先例——AI 检索官方标准逐条给推荐解与依据，用户逐条拍板，全部定案后翻 `reviewed` 并登记 D-22+）
-- **关联 issue**：`.scratch/m3-investigation-loop/`（spec.md + issues/01–08，与 T1–T8 一一对应）
+- **当前状态**：`reviewed`（2026-09-08 G1–G9 全部评审定案——用户逐条拍板采纳推荐解；D-22–D-29 已登记 `decisions.md`，新术语已入 `CONTEXT.md`；进入实现票派工阶段）
+  - 上一状态 `draft`（2026-09-08 草案完成）
+- **评审人 / 评审日期**：用户逐条拍板（G1–G9 全部采纳推荐默认解），2026-09-08；评审依据由 AI 检索官方标准提供（R1–R9，含 URL 与取用日期），用户保留推翻权（推翻须回退 `draft` 并重开对应 issue）
+- **关联 issue**：`.scratch/m3-investigation-loop/`（spec.md + issues/01–08，与 T1–T8 一一对应；定案后 T5/T6 已转 `ready-for-agent`）
 - **设计期口径**：LLM 全 mock（2026-09-08 拍板，照 M2 先例）——零真实调用、不需要 API key、不读 `$HOME/.oncall-llm-env`；真实调用与实测回填留实现票（T8，开工前需用户确认 key）
 
 ## 目标
@@ -110,7 +111,7 @@ pyproject C3 契约：`oncall.harness` 禁止 import `oncall.ingest / classify /
 
 ## 开放设计点（评审 grill）
 
-> 以下 G1–G9 为草案推荐解（2026-09-08），**待用户逐条拍板**；全部定案后本表增「评审定案」列、翻 `reviewed`、登记 `decisions.md`（从 D-22 起）、新术语入 `CONTEXT.md`。若某条被推翻，仅回退受影响 issue 的就绪态，不整票作废。
+> 以下 G1–G9 已于 **2026-09-08 全部评审定案**：用户逐条拍板，**全部采纳推荐默认解**（定案结论 = 各行「推荐默认解」列，不再另设定案列）；标准来源见各行「依据」及节末「评审依据」R1–R9。定案已登记 `decisions.md` **D-22–D-29**（G1→D-22 / G2→D-23 / G3→D-24 / G4→D-25 / G5→D-26 / G6→D-27 / G7→D-28 / G9→D-29；G8 测试策略属方法不设 D）。若被推翻需回退 `draft` 并重开对应 issue。
 
 | # | 开放点 | 推荐默认解 | 理由 | 依据 |
 |---|---|---|---|---|
@@ -143,7 +144,7 @@ pyproject C3 契约：`oncall.harness` 禁止 import `oncall.ingest / classify /
 ## 开发计划（任务拆解）
 
 > 节奏：W3（M2 已收尾，可立即派工）；目标 3–4 天（每日 1–2h）。TDD 红绿循环照硬规则 12：会话契约、Planner 协议、ToolResult 形状、失败归类是约定接缝。**本票（设计票）不开工实现**：tracker 建完即止，派工由用户另行下发。
-> 就绪态判据（照 M2 先例）：涉及主循环结构、Verifier 形态等架构取舍的 → `ready-for-human`（T5/T6）；验收可机械判定的 → `ready-for-agent`。
+> 就绪态判据（照 M2 先例）：涉及主循环结构、Verifier 形态等架构取舍的 → `ready-for-human`；验收可机械判定的 → `ready-for-agent`。**G1–G9 已于 2026-09-08 全部定案，T5/T6 已转 `ready-for-agent`**。
 
 **关键里程碑**：
 
@@ -157,8 +158,8 @@ pyproject C3 契约：`oncall.harness` 禁止 import `oncall.ingest / classify /
 | T2 | ToolRegistry 与权限分级 | Registry（注册/参数校验/30s 超时/重试 ≤2/输出截断 ≤2000 tokens/埋点）+ PermissionGate（L0/L1/L2）+ 六工具注册面；query_kb unavailable stub、execute_action L2 stub | pytest 绿：超时重试计数、截断+指针行为、L2 工具调用被拒且留审计记录、未知工具名拒绝 | T1 | ready-for-agent |
 | T3 | 取证工具实现 | query_metrics（query_range 封装）/ search_logs（Loki）/ detect_anomaly（纯统计 v1）/ get_topology（复用 context 三源）的 I/O 形状与降级（unavailable 不抛错） | pytest 绿：每工具 ok/empty/error/unavailable 四态单测；时间锚缺省 `last_fired_at`；断网单测全绿 | T2 | ready-for-agent |
 | T4 | ContextManager | 摘要模板固定、系统提示 ≤1500 tokens、工具输出 ≤2000 tokens 截断+指针、步数 ≥10 移出已证伪假设 | pytest 绿：预算边界用例（截断触发/指针可回溯/移出后 session 仍保留原证据） | T1 | ready-for-agent |
-| T5 | Verifier（形态按 G5 定案） | 规则层（每步确定性校验，hallucination 判定）+ LLM 裁决接缝（新假设提出/收束判定，≤3 次/调查，证伪导向 prompt，mock） | pytest 绿：规则层各校验正反例；裁决调用次数上限断言；Verifier 不产出计划 | T3 / T4 | **ready-for-human**（Verifier 形态） |
-| T6 | 主循环 Loop | 推进 step、终止三出口、失败模式六值归类、escalate_to_human、防绕圈四机制（G6/G7） | pytest 绿：防伪三判据三组单测（G8）；六值 failure_mode 各 ≥1 个触发用例；15 步硬安全阀 | T1–T5 | **ready-for-human**（主循环结构） |
+| T5 | Verifier（形态按 G5 定案） | 规则层（每步确定性校验，hallucination 判定）+ LLM 裁决接缝（新假设提出/收束判定，≤3 次/调查，证伪导向 prompt，mock） | pytest 绿：规则层各校验正反例；裁决调用次数上限断言；Verifier 不产出计划 | T3 / T4 | ready-for-agent |
+| T6 | 主循环 Loop | 推进 step、终止三出口、失败模式六值归类、escalate_to_human、防绕圈四机制（G6/G7） | pytest 绿：防伪三判据三组单测（G8）；六值 failure_mode 各 ≥1 个触发用例；15 步硬安全阀 | T1–T5 | ready-for-agent |
 | T7 | 调查入口 API | `POST /investigate`（404 语义/同步返回）+ `GET /investigations/{incident_id}`（进程内报告注册表）；报告 JSON 形状照 agent-loop-design | pytest 绿：endpoints 契约测试；404；escalated 报告可查 | T6 | ready-for-agent |
 | T8 | 端到端 3 剧本验证与收尾 | 3 剧本 mock 端到端 → 真实 LLM 实测（**需用户确认 key**，照 M2 issue 07 流程）→ 验收节逐条回填 → 设计文档翻 `implemented` → 新术语入 CONTEXT / D-22+ 落位核对 | 3 剧本 conclusion 与 golden root_cause 规则匹配级命中；步数/时长/成本实测回填；全量 pytest + ruff 绿不回退 | T7 | ready-for-agent（真实调用前确认 key） |
 
@@ -174,10 +175,10 @@ pyproject C3 契约：`oncall.harness` 禁止 import `oncall.ingest / classify /
 | 6 | A2 prompt 落位 | Planner system prompt / Verifier 证伪 prompt 走模块级模板（照 M2 `classify/llm/prompt.py` 先例），实现票按架构守卫现状落位，禁业务代码内联 >200 字符 prompt |
 | 7 | 同步 `POST /investigate` 的 5min 占用 | v1 同步（单进程 dev 语义）；如 uvicorn worker 被长调查阻塞，M7 前再评估后台任务化（不在 M3 范围） |
 
-## 评审后动作（定案时执行，本草案不含）
+## 评审后动作（2026-09-08 定案当日已执行）
 
-1. 本文件 G 表增「评审定案」列 + 翻 `reviewed`（回填评审人/日期）
-2. `docs/design/decisions.md` 登记 D-22+（逐条过 ADR 三判据自检：难以逆转 / 无上下文会意外 / 真实权衡）
-3. `CONTEXT.md` 新术语入表（建议候选：**调查会话 / InvestigationSession**、**证据步 / Evidence Step**、**工具结果 / Tool Result**（含四态 status）、**决策输出 / Planner Decision**，含 `_Avoid_` 列）
-4. tracker 就绪态终审：T5/T6 是否因定案转 `ready-for-agent`
-5. 架构文档如需回写（如 §4 注明 M3 内存契约），注明「实现票执行」
+1. ✅ G 表定案说明回填 + 本文件翻 `reviewed`（评审人/日期已填）
+2. ✅ `docs/design/decisions.md` 登记 **D-22–D-29**（逐条过 ADR 三判据自检：难以逆转 / 无上下文会意外 / 真实权衡；G8 测试策略属方法不设 D）
+3. ✅ `CONTEXT.md` 新术语入表（调查会话 / 证据步 / 工具结果 / 决策输出 / 转人工，含 `_Avoid_`；「失败模式」词条补 premature_stop 口径）
+4. ✅ tracker 就绪态终审：T5/T6 转 `ready-for-agent`（spec 与 issue 文件同步）
+5. 架构文档无需回写（M3 无 schema 变更；M4 落库时再回写 §4）
