@@ -39,6 +39,7 @@ from oncall.db.models import Investigation
 from oncall.db.views import investigation_report_body
 from oncall.harness.loop import InvestigationResult, LoopComponents, run_investigation
 from oncall.harness.session import HypothesisStatus, InvestigationSession
+from oncall.knowledge.report import build_closed_loop_report, render_closed_loop_markdown
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -279,15 +280,16 @@ def create_investigation_router(engine: Engine, deps: InvestigationDeps) -> APIR
 
     @router.get("/investigations/{incident_id}/report.md")
     def investigation_report_markdown(incident_id: int) -> Response:
-        """证据链数据直出的 Markdown 最小版（M4-T4 / D-36 / G7 定案）。
+        """闭环报告 Markdown（M6-T2 / D-49：D-36 最小版证据链节保留 + 五节追加）。
 
-        `text/markdown`，str 模板拼接零新依赖；数据源同 JSON GET（共用
-        `_load_report_body`，不重复实现查询逻辑）；本票 Markdown 是 M6
-        报告生成的输入而非替代（美化 / 处置 / 建议归 M6）。
+        `text/markdown`；前半 = M4 证据链数据直出（键/节零倒改，M7 样本源兼容），
+        追加 = knowledge 模块五节闭环报告（开局卡片/时间线/根因/处置/改进建议，
+        每数据点可回溯库行，D-49）；五节拼装失败不静默——与 404 语义一致上抛。
         """
-        return Response(
-            content=_render_report_markdown(_load_report_body(incident_id)),
-            media_type="text/markdown",
-        )
+        content = _render_report_markdown(_load_report_body(incident_id))
+        with Session(engine) as session:
+            sections = build_closed_loop_report(session, incident_id)
+            content += render_closed_loop_markdown(sections)
+        return Response(content=content, media_type="text/markdown")
 
     return router

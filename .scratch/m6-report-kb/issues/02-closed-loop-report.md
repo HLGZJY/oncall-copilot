@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 # closed loop report
@@ -9,4 +9,4 @@ Blocked by: 01
 
 ## 验收（可机械判定）
 
-- [ ] pytest 绿：五节齐全且时间线/根因/处置各数据点可回溯库行；LLM 未启用时建议节为占位文案；既有 report.md 键/节兼容；682 基线只增不减
+- [x] pytest 绿：五节齐全且时间线/根因/处置各数据点可回溯库行；LLM 未启用时建议节为占位文案；既有 report.md 键/节兼容；682 基线只增不减
