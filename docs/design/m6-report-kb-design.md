@@ -83,23 +83,23 @@ M5 恢复验证通过 → incident 翻 mitigated（D-40 链路）
    - **指纹未命中但向量相似**（top_k ≥ 阈值）：不缓存、正常开调查，召回结果只作参考证据——相似 ≠ 相同，宁多查一次（0 漏报方向的保守选择，与 D-14「桶边界保守不漏收」同向）；
    - 判定落点 = 调查入口（`POST /investigate` 前置确定性检查），不是 Planner 决策——缓存是系统优化不是 Agent 行为，硬规 1 的「模型自主」不适用。
 3. **召回触发时机的张力与解**（G6 核心）：硬规 1 要求步骤由模型自主决定；但 PRD 验收要求「首步即引用」。解 = **开局召回不是「步」**——与 `collect_context`（D-16 确定性三源上下文前置组装）同构：调查开局做一次确定性指纹/标签相似比对，命中即作为参考证据随开局锚点注入（不占 15 步预算、不经 LLM）；`query_kb` 工具保持 Planner 自主决策用于深查。这样 PRD 验收是确定性系统行为（mock 可断言、可录屏），而「要不要进一步查历史」仍是模型自主。
-4. **C3 依赖方向**：`oncall.kb`（新模块，命名预留给 pyproject C3 禁列评审）与 remediation 同构——harness 侧 query_kb 只留 handler 注入接缝（`QueryKbInput` → 检索函数 Protocol），kb 实现经 `app.py` 组装注入；依赖方向 kb → db（第九表）、api → kb（报告出口与入库触发）合法。embedding/Chroma 依赖只进 kb 模块，harness/api 零感知。
+4. **C3 依赖方向**：`oncall.knowledge`（C3 预留位 `oncall.knowledge`，pyproject 零改动）（新模块，命名预留给 pyproject C3 禁列评审）与 remediation 同构——harness 侧 query_kb 只留 handler 注入接缝（`QueryKbInput` → 检索函数 Protocol），kb 实现经 `app.py` 组装注入；依赖方向 kb → db（第九表）、api → kb（报告出口与入库触发）合法。embedding/Chroma 依赖只进 kb 模块，harness/api 零感知。
 
 ### 设计的模块
 
 | 模块 | 动作 | 职责 | 目录 | 关联里程碑 |
 |---|---|---|---|---|
-| 闭环报告拼装器 | 新增 | 读库拼装：时间线（alert_events 实测 firing 序列）/ 根因（hypotheses confirmed + supporting steps）/ 处置（remediation_proposals 全链）/ 改进建议（LLM 门控节）；Markdown 渲染升级 `report.md`（D-36 出口的 M6 版） | `src/oncall/kb/report.py`（预算 ≈200 行） | M6 → M7 评测样本源 / M8 报告页 |
-| 报告切块器 | 新增 | 闭环报告 → 章节 knowledge chunks（块 = 章节边界 + 开局卡片摘要，G5）；每块带 incident_id/section/seq 元数据 | `src/oncall/kb/chunking.py`（预算 ≈80 行） | M6 |
-| 向量化与索引 | 新增 | embedding 封装（可注入：测试用 MockEmbedder / 真实模型）+ Chroma persistent 客户端（G4）+ 增量 upsert / 覆盖删除 | `src/oncall/kb/embedder.py` + `src/oncall/kb/store.py`（预算 ≈220 行） | M6 → M7 召回质量评测 |
-| query_kb 实装 | 改造 | stub → 真实 RAG handler：QueryKbInput{query, top_k} → 向量检索 → ToolResult{ok, data: kb_hits[]（含 incident_id/section/text/score/source=kb）}；未注入检索函数时维持 unavailable stub 语义（既有测试零回退） | `src/oncall/harness/tools/registry.py`（handler 注入面）+ `src/oncall/kb/retriever.py`（预算 ≈100 行） | M6 |
-| 开局召回器 | 新增 | 调查入口前置：指纹精确命中 → 缓存复用出口（G9）；未命中 → 标签/故障类型相似比对 → kb_hits 作为参考证据节点（source=kb）随 opening 注入 | `src/oncall/kb/recall.py`（预算 ≈120 行） | M6 |
-| 入库编排 | 新增 | mitigated 事件后触发（G8）：拼装 → 切块 → 向量化 → 落库；investigations 覆盖时同步覆盖 kb 旧行（D-31 衔接）；未实证不入库 | `src/oncall/kb/pipeline.py`（预算 ≈150 行） | M6 |
+| 闭环报告拼装器 | 新增 | 读库拼装：时间线（alert_events 实测 firing 序列）/ 根因（hypotheses confirmed + supporting steps）/ 处置（remediation_proposals 全链）/ 改进建议（LLM 门控节）；Markdown 渲染升级 `report.md`（D-36 出口的 M6 版） | `src/oncall/knowledge/report.py`（预算 ≈200 行） | M6 → M7 评测样本源 / M8 报告页 |
+| 报告切块器 | 新增 | 闭环报告 → 章节 knowledge chunks（块 = 章节边界 + 开局卡片摘要，G5）；每块带 incident_id/section/seq 元数据 | `src/oncall/knowledge/chunking.py`（预算 ≈80 行） | M6 |
+| 向量化与索引 | 新增 | embedding 封装（可注入：测试用 MockEmbedder / 真实模型）+ Chroma persistent 客户端（G4）+ 增量 upsert / 覆盖删除 | `src/oncall/knowledge/embedder.py` + `src/oncall/knowledge/store.py`（预算 ≈220 行） | M6 → M7 召回质量评测 |
+| query_kb 实装 | 改造 | stub → 真实 RAG handler：QueryKbInput{query, top_k} → 向量检索 → ToolResult{ok, data: kb_hits[]（含 incident_id/section/text/score/source=kb）}；未注入检索函数时维持 unavailable stub 语义（既有测试零回退） | `src/oncall/harness/tools/registry.py`（handler 注入面）+ `src/oncall/knowledge/retriever.py`（预算 ≈100 行） | M6 |
+| 开局召回器 | 新增 | 调查入口前置：指纹精确命中 → 缓存复用出口（G9）；未命中 → 标签/故障类型相似比对 → kb_hits 作为参考证据节点（source=kb）随 opening 注入 | `src/oncall/knowledge/recall.py`（预算 ≈120 行） | M6 |
+| 入库编排 | 新增 | mitigated 事件后触发（G8）：拼装 → 切块 → 向量化 → 落库；investigations 覆盖时同步覆盖 kb 旧行（D-31 衔接）；未实证不入库 | `src/oncall/knowledge/pipeline.py`（预算 ≈150 行） | M6 |
 | 报告出口 API | 改造 | `GET /investigations/{incident_id}/report.md` 升级为闭环报告版（新增时间线美化/处置节/建议节）；`GET /kb/incidents/{incident_id}` 知识条目查询（M7/M8 数据面） | `src/oncall/api/kb.py`（新文件，预算 ≈120 行） | M6 → M8 |
 
 ### C3/C6 论证
 
-1. **harness → kb 零静态依赖**：query_kb 沿用 M5 execute_action 同款 handler 注入接缝先例（registry 既有 handlers 映射 + `app.py` 组装注入）；kb 检索函数以 Protocol/TYPE_CHECKING 声明，import-linter 静态面不新增 harness→kb 边（pyproject C3 禁列随票增补 `oncall.kb`，与 `oncall.remediation` 先例一致）。
+1. **harness → kb 零静态依赖**：query_kb 沿用 M5 execute_action 同款 handler 注入接缝先例（registry 既有 handlers 映射 + `app.py` 组装注入）；kb 检索函数以 Protocol/TYPE_CHECKING 声明，import-linter 静态面不新增 harness→kb 边（pyproject C3 禁列随票增补 `oncall.knowledge`（C3 预留位 `oncall.knowledge`，pyproject 零改动），与 `oncall.remediation` 先例一致）。
 2. **api → kb / kb → db 单向合法**：报告出口与入库触发在 api 层 import kb；kb import `oncall.db`（第九表落库）合法；remediation → kb 不需要（入库读 remediation_proposals 表，走 db 层，不 import remediation 模块）。
 3. **C6 行数预算**：模块表最大 report.py ≈200 < 300；registry.py 增 handler 注入 ≈15 行（现 299 行内余量核对随票做，超出则按 M5 先例拆 `harness/tools/kb.py` 新文件）；loop.py **零净增**（召回在入口、query_kb 走既有工具分派）。
 4. **A6/C2 面**：embedding 与 Chroma 是新增三方依赖（`sentence-transformers` + `chromadb`）——走 M5 D-43 同款「C2 指零新依赖，新增须显式评审」路径（G3/G4）；无 subprocess 面，bandit 增量预期为零。
@@ -171,7 +171,7 @@ M5 恢复验证通过 → incident 翻 mitigated（D-40 链路）
 
 | # | 任务 | 内容 | 依赖 |
 |---|---|---|---|
-| T1 | 第九表 + kb 模块骨架 | `kb_chunks` ORM + `oncall.kb` 包（C3 禁列随票增补 pyproject）+ frozen-face 契约测试（D-25/D-31/D-46 冻结列不动断言） | — |
+| T1 | 第九表 + kb 模块骨架 | `kb_chunks` ORM + `oncall.knowledge`（C3 预留位 `oncall.knowledge`，pyproject 零改动） 包（C3 禁列随票增补 pyproject）+ frozen-face 契约测试（D-25/D-31/D-46 冻结列不动断言） | — |
 | T2 | 闭环报告拼装器 + 出口升级 | `kb/report.py` 读库拼装 + `report.md` 升级 + `source_meta_json` 回溯锚点断言 + 建议节占位（G2 mock 契约冻结） | T1 |
 | T3 | 切块 + 向量化 + 入库管线 | `chunking.py`（G5 章节切分）+ `embedder.py`（MockEmbedder/真实可注换）+ `store.py`（Chroma + 权威同步）+ `pipeline.py`（G8 门槛 + 覆盖淘汰） | T1 |
 | T4 | query_kb 实装 + 开局召回 | `retriever.py` + registry handler 注入 + `recall.py`（指纹缓存复用 + 向量参考召回两通道，G6/G9） | T3 |

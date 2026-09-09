@@ -1,0 +1,174 @@
+[
+  {
+    "segment": "real",
+    "scenario": "cpu-spike",
+    "model": "qwen3.7-flash",
+    "termination": "escalated",
+    "step_count": 2,
+    "duration_seconds": 2.161,
+    "failure_mode": "plan_error",
+    "stop_reason": "绕圈再犯（get_topology 同参重复调用且已警告），熔断转人工",
+    "confidence": 1.0,
+    "match": {
+      "hit": false,
+      "entities_hit": [],
+      "entities_missing": [
+        "cpu"
+      ],
+      "actions_hit": []
+    },
+    "conclusion": null,
+    "cost_cny": 0.000371,
+    "calls": 3,
+    "total_tokens": 1175,
+    "usage_detail": [
+      {
+        "prompt_tokens": 302,
+        "completion_tokens": 41,
+        "total_tokens": 343,
+        "latency_seconds": 0.987
+      },
+      {
+        "prompt_tokens": 343,
+        "completion_tokens": 41,
+        "total_tokens": 384,
+        "latency_seconds": 0.517
+      },
+      {
+        "prompt_tokens": 407,
+        "completion_tokens": 41,
+        "total_tokens": 448,
+        "latency_seconds": 0.598
+      }
+    ]
+  },
+  {
+    "segment": "real",
+    "scenario": "slow-sql",
+    "model": "qwen3.7-flash",
+    "termination": "concluded",
+    "step_count": 2,
+    "duration_seconds": 4.716,
+    "failure_mode": null,
+    "stop_reason": "调查中止：关键上下文缺失（未提供告警关联的服务名称及时间窗口），且历史检索机制已熔断，无法推进后续排查步骤。",
+    "confidence": 1.0,
+    "match": {
+      "hit": false,
+      "entities_hit": [],
+      "entities_missing": [
+        "tasks",
+        "锁"
+      ],
+      "actions_hit": []
+    },
+    "conclusion": "调查中止：关键上下文缺失（未提供告警关联的服务名称及时间窗口），且历史检索机制已熔断，无法推进后续排查步骤。",
+    "cost_cny": 0.00082,
+    "calls": 5,
+    "total_tokens": 2383,
+    "usage_detail": [
+      {
+        "prompt_tokens": 302,
+        "completion_tokens": 53,
+        "total_tokens": 355,
+        "latency_seconds": 0.721
+      },
+      {
+        "prompt_tokens": 344,
+        "completion_tokens": 54,
+        "total_tokens": 398,
+        "latency_seconds": 1.095
+      },
+      {
+        "prompt_tokens": 394,
+        "completion_tokens": 52,
+        "total_tokens": 446,
+        "latency_seconds": 0.867
+      },
+      {
+        "prompt_tokens": 474,
+        "completion_tokens": 82,
+        "total_tokens": 556,
+        "latency_seconds": 0.849
+      },
+      {
+        "prompt_tokens": 524,
+        "completion_tokens": 104,
+        "total_tokens": 628,
+        "latency_seconds": 1.112
+      }
+    ]
+  },
+  {
+    "segment": "real",
+    "scenario": "queue-backlog",
+    "model": "qwen3.7-flash",
+    "termination": "escalated",
+    "step_count": 5,
+    "duration_seconds": 8.044,
+    "failure_mode": "plan_error",
+    "stop_reason": "绕圈再犯（get_topology 同参重复调用且已警告），熔断转人工",
+    "confidence": 1.0,
+    "match": {
+      "hit": false,
+      "entities_hit": [],
+      "entities_missing": [
+        "队列"
+      ],
+      "actions_hit": []
+    },
+    "conclusion": null,
+    "cost_cny": 0.001536,
+    "calls": 8,
+    "total_tokens": 4702,
+    "usage_detail": [
+      {
+        "prompt_tokens": 302,
+        "completion_tokens": 52,
+        "total_tokens": 354,
+        "latency_seconds": 1.626
+      },
+      {
+        "prompt_tokens": 354,
+        "completion_tokens": 58,
+        "total_tokens": 412,
+        "latency_seconds": 1.052
+      },
+      {
+        "prompt_tokens": 435,
+        "completion_tokens": 69,
+        "total_tokens": 504,
+        "latency_seconds": 1.018
+      },
+      {
+        "prompt_tokens": 503,
+        "completion_tokens": 78,
+        "total_tokens": 581,
+        "latency_seconds": 0.883
+      },
+      {
+        "prompt_tokens": 565,
+        "completion_tokens": 80,
+        "total_tokens": 645,
+        "latency_seconds": 0.944
+      },
+      {
+        "prompt_tokens": 608,
+        "completion_tokens": 82,
+        "total_tokens": 690,
+        "latency_seconds": 0.739
+      },
+      {
+        "prompt_tokens": 651,
+        "completion_tokens": 68,
+        "total_tokens": 719,
+        "latency_seconds": 0.792
+      },
+      {
+        "prompt_tokens": 718,
+        "completion_tokens": 79,
+        "total_tokens": 797,
+        "latency_seconds": 0.919
+      }
+    ]
+  }
+]

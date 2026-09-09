@@ -254,3 +254,47 @@ class Hypothesis(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
     supporting_steps: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)
     against_steps: Mapped[list[Any]] = mapped_column(JSON, nullable=False, default=list)
+
+
+class KbChunk(Base):
+    """知识块（D-55 第九表）：闭环报告按章节切出的入库单元，锚 incident 一对多。
+
+    文本权威在本表（可 SQL 审计、可 join incidents 回溯），Chroma 只存可重建的
+    向量索引（D-52/G7）；入库门槛 = incident `mitigated` 实证（D-56，知识污染
+    第一道防线），未实证事件没有入库通道；`superseded_at` 非空 = 旧块已被
+    重复调查覆盖淘汰（D-31 覆盖语义联动，召回不再命中）；`hit_count` 只计真实
+    向量召回、不计缓存复用（D-57，M7 召回质量口径分离）。
+    字段契约 = docs/design/m6-report-kb-design.md §数据模型变更（D-49–D-57）。
+    """
+
+    __tablename__ = "kb_chunks"
+    __table_args__ = (
+        # D-53 五类 section 冻结；CHECK 落 DB 层（照 ck_incidents_status 先例）
+        CheckConstraint(
+            "section IN ('opening_card', 'timeline', 'root_cause', 'remediation', "
+            "'suggestions')",
+            name="ck_kb_chunks_section",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 锚 incident（一对多：一次闭环报告切多块）；索引供按事故查询
+    incident_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("incidents.id"), nullable=False, index=True
+    )
+    # 产出调查可空：缓存复用路径无新调查（D-57 reused_from）
+    investigation_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("investigations.id"))
+    section: Mapped[str] = mapped_column(String(16), nullable=False)
+    # 同 section 内块序（从 0 起递增）
+    seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 块文本（权威存储；切块器产出，禁虚构——每个数据点可经 source_meta_json 回溯）
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    # 拼装来源锚点：报告版本/生成时间/各数据点来源表与行 id（D-49 可回溯）
+    source_meta_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    # 命中计数（真实向量召回 ++；缓存复用不计，D-57）；M7 低命中率淘汰反馈接口预留
+    hit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    # 覆盖淘汰标记：非空 = 已被重复调查的新块取代（召回不再命中）
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

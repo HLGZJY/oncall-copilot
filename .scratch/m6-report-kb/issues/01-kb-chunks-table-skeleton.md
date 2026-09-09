@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: —
 
 # kb chunks table skeleton
@@ -9,4 +9,4 @@ Blocked by: —
 
 ## 验收（可机械判定）
 
-- [ ] pytest 绿：kb_chunks create_all 幂等落库；frozen-face 断言既有表列集合不变；import-linter C3 含 oncall.kb 禁列
+- [x] pytest 绿：kb_chunks create_all 幂等落库；frozen-face 断言既有表列集合不变；import-linter C3 含 oncall.kb 禁列

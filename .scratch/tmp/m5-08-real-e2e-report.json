@@ -1,0 +1,80 @@
+[
+  {
+    "segment": "real-e2e",
+    "scenario": "cpu-spike",
+    "proposal_id": 1,
+    "incident_id": 1,
+    "status": "recovered",
+    "alert_wait_s": 65.5,
+    "confirm_duration_s": 121.9,
+    "executed_commands": 3,
+    "rejected_commands": 0,
+    "recovery_window_s": 120.0,
+    "verify_poll_attempts": 9,
+    "verify_observed": 0.04499999999999999,
+    "verify_samples": 5,
+    "runtime_values": {
+      "cpuset_cores": "0-15"
+    },
+    "reference_values": {},
+    "argv": [
+      [
+        "docker",
+        "rm",
+        "-f",
+        "cpu-spike-probe"
+      ],
+      [
+        "docker",
+        "rm",
+        "-f",
+        "pumba-cpu-spike"
+      ],
+      [
+        "docker",
+        "update",
+        "--cpuset-cpus=0-15",
+        "oncall-demo-api-gw-1"
+      ]
+    ]
+  },
+  {
+    "segment": "real-e2e",
+    "scenario": "slow-sql",
+    "proposal_id": 1,
+    "incident_id": 1,
+    "status": "recovered",
+    "alert_wait_s": 85.6,
+    "confirm_duration_s": 106.1,
+    "executed_commands": 2,
+    "rejected_commands": 0,
+    "recovery_window_s": 105.0,
+    "verify_poll_attempts": 8,
+    "verify_observed": 2.5,
+    "verify_samples": 5,
+    "runtime_values": {
+      "session_id": "17983"
+    },
+    "reference_values": {
+      "db_pool_size": 5.0
+    },
+    "argv": [
+      [
+        "docker",
+        "rm",
+        "-f",
+        "slow-sql-probe"
+      ],
+      [
+        "docker",
+        "exec",
+        "oncall-demo-mysql-1",
+        "mysql",
+        "-uroot",
+        "-poncall",
+        "-e",
+        "KILL 17983"
+      ]
+    ]
+  }
+]
