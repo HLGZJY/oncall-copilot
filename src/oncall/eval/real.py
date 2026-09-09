@@ -61,7 +61,7 @@ __all__ = [
 
 #: 真实档矩阵 profile 名（D-66 拍板：kimi-k2.6 质量上探 vs kimi-k2.5 性价比基线；
 #: 模型名/单价只活在 env 与报告回填，代码零硬编码——G8）
-REAL_PROFILE_NAMES = ("k2-6", "k2-5")
+REAL_PROFILE_NAMES = ("k2-6", "k3")
 
 #: .env 路径 env（D-67：默认仓库根 .env，key 不落库不入 git）
 ENV_FILE_ENV = "ONCALL_M7_ENV_FILE"
@@ -225,7 +225,8 @@ def run_eval_real(  # noqa: PLR0913 —— 真实档装配面 = 矩阵五参 + �
         judge_usage = getattr(getattr(judge, "_client", None), "usage_log", None) or []
         judge_summary = _usage_real_of("ONCALL_JUDGE_LLM_", judge_usage) if judge_usage else None
         for row in rows:
-            prefix = PROFILE_PREFIX_FMT.format(name=row.model.upper())
+            # 连字符/下划线等价（与 report.resolve_profile 同规：K2-6 ≡ K2_6）
+            prefix = PROFILE_PREFIX_FMT.format(name=row.model.upper()).replace("-", "_")
             usages = usage_map.get((row.model, row.scenario, row.run_idx), [])
             row.run_json = {
                 **(row.run_json or {}),

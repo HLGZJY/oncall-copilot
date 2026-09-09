@@ -133,6 +133,9 @@ def run_scenario(
         judgment = judger(golden, result)
         row.verdict = judgment.verdict
         row.judged_by = judgment.judged_by
+        # 判定痕迹持久化（issue 07 冒烟教训：judge 回退 judge_error 痕迹曾丢失，
+        # 只能靠探针复现——禁丢弃纪律要求回退可审计）
+        row.run_json["judgment"] = {"reason": judgment.reason}
         rows.append(row)
     unstable = len({row.verdict for row in rows}) > 1  # D-61：判定不一致不静默平均
     for row in rows:

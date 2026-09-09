@@ -63,12 +63,21 @@ def resolve_profile(
 
     即把 `ONCALL_LLM_PROFILE_<NAME>_*` 映射回既有 `ONCALL_LLM_*` 词汇后
     交给 `LLMClientConfig.from_env`——切换面单源，不改 llm.py 冻结面。
+    NAME 中的连字符与下划线等价（`K2-6` ≡ `K2_6`，env 命名惯例优先下划线）。
     """
     environ = os.environ if env is None else env
+
+    def _lookup(tail: str) -> str | None:
+        for prefix in (profile.env_prefix, profile.env_prefix.replace("-", "_")):
+            value = environ.get(prefix + tail)
+            if value is not None:
+                return value
+        return None
+
     mapped = {
         "ONCALL_LLM_" + tail: value
         for tail in PROFILE_ENV_SUFFIXES
-        if (value := environ.get(profile.env_prefix + tail)) is not None
+        if (value := _lookup(tail)) is not None
     }
     return LLMClientConfig.from_env(mapped)
 

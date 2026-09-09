@@ -286,13 +286,13 @@ class _FakeJudgeClient:
 def test_resolve_judge_config_maps_prefix_to_llm_env():
     env = {
         "ONCALL_JUDGE_LLM_BASE_URL": "https://api.moonshot.cn/v1",
-        "ONCALL_JUDGE_LLM_MODEL": "moonshot-v1-8k",
+        "ONCALL_JUDGE_LLM_MODEL": "kimi-k2.7-code",
         "ONCALL_JUDGE_LLM_API_KEY": "sk-test",
         "ONCALL_JUDGE_LLM_TIMEOUT_SECONDS": "20",
     }
     config = resolve_judge_config(env)
     assert config.base_url == "https://api.moonshot.cn/v1"
-    assert config.model == "moonshot-v1-8k"
+    assert config.model == "kimi-k2.7-code"
     assert config.api_key == "sk-test"
     assert config.timeout_seconds == 20.0
 

@@ -162,6 +162,8 @@ def test_run_json_detail_traceable():
     detail = rows[0].run_json
     assert detail["conclusion"] == _golden().root_cause
     assert "stop_reason" in detail
+    # 判定痕迹持久化（issue 07 冒烟教训：judge 回退 judge_error 痕迹曾丢失）
+    assert detail["judgment"] == {"reason": "stub 判定"}
 
 
 def test_rows_persisted_via_orm_query():

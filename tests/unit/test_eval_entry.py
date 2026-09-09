@@ -156,6 +156,10 @@ class TestRunEvalReal:
     ) -> None:
         """judge env 缺项构造期 fail-fast（LLMConfigError，禁静默回退 mock）。"""
         monkeypatch.setenv(REAL_TIER_ENV, "1")
+        # 断网守卫（A1）：env 文件指到空临时文件，防 run_eval_real 内部
+        # load_env_file() 把本机真实 .env 的 judge 配置补回来触发真实调用
+        (tmp_path / "empty.env").write_text("", encoding="utf-8")
+        monkeypatch.setenv(ENV_FILE_ENV, str(tmp_path / "empty.env"))
         for key in (
             "ONCALL_JUDGE_LLM_BASE_URL",
             "ONCALL_JUDGE_LLM_MODEL",
@@ -180,7 +184,7 @@ class TestEnvFile:
         env_file.write_text(
             "# 注释行\n"
             "\n"
-            "ONCALL_JUDGE_LLM_MODEL=moonshot-v1-8k\n"
+            "ONCALL_JUDGE_LLM_MODEL=kimi-k2.7-code\n"
             'ONCALL_JUDGE_LLM_API_KEY="sk-quoted"\n'
             "MALFORMED LINE WITHOUT EQUALS\n",
             encoding="utf-8",
