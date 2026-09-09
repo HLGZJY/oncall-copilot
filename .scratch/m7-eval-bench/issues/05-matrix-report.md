@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 02, 04
 
 # 05 N 遍矩阵 + 模型 profile 矩阵 + 报告双产物

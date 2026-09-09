@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 01
 
 # 03 判对错管线（规则匹配层 + judge 契约 mock 冻结）

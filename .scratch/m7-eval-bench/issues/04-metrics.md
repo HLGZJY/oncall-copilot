@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 03
 
 # 04 指标核算（五列 + 复用/escalated 单列）

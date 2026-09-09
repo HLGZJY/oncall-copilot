@@ -2,7 +2,7 @@
 title: "M7 评测台（剧本 runner + 指标矩阵 + 模型对比 + 回归）：设计与开发计划"
 summary: "M7 设计草案（draft，待评审）。对黄金集剧本全自动跑 N 遍产出指标矩阵：Top-1/Top-3 命中、步数、耗时、成本、失败模式归类；≥2 LLM 模型矩阵对比（env 切换面）；每次代码变更跑回归（Makefile/CI 面）。判对错两级（规则匹配 → LLM-as-judge + 人工抽检 20%）；复用出口与 escalated 案例按 D-57/D-56 口径单列。G1–G8 开放点预填推荐解待用户拍板"
 source: docs/prd.md §7-M7 + docs/architecture/architecture.md（时序 §5 / 数据 §4）+ docs/design/decisions.md D-28/49-57 + docs/reference/_sources/项目信息.md 3.3 模块 F + 6.5（只回溯：评测台方法论与防泄漏）+ src/oncall/harness/loop.py（FailureMode 六值 / InvestigationResult 现状接缝）+ src/oncall/infra/llm_planner.py（ONCALL_LLM_* 切换面）+ src/oncall/classify/stats.py（指标核算纯函数，M2 issue 05 产出）+ tests/integration/test_m5_real_e2e.py（真实 e2e 开关先例）+ 评审标准来源（见「评审依据」R1–R6）
-status: draft
+status: reviewed
 updated: 2026-09-09
 read_when: 评审 M7 方案时；进入 M7 开发前；被问「评测怎么判对错/模型怎么对比/评测怎么防泄漏」时
 ---
@@ -13,7 +13,7 @@ read_when: 评审 M7 方案时；进入 M7 开发前；被问「评测怎么判�
 
 `draft`（草案，讨论中）→ `reviewed`（评审通过，可拆票）→ `implemented`（已落地，实测回填）→ `superseded`
 
-- **当前状态**：`draft`（2026-09-09 草案完成，待用户逐条拍板 G1–G8）
+- **当前状态**：`reviewed`（2026-09-09 G1–G8 用户逐条拍板，全部采纳推荐解；定案登记 `decisions.md` **D-58–D-65**，待定项「评测判对错细则」随 D-59 关闭；tracker 已建 `.scratch/m7-eval-bench/`，issue 01–06 ready-for-agent 按编号派工）
 - **评审人 / 评审日期**：（评审通过后回填）
 - **设计期口径**：本票零写码、零建表、零真实 LLM 调用。评测台单元测试全走 mock（MockPlanner / MockClassifier）；真实调用走显式 env 开关（`ONCALL_RUN_M7_EVAL=1` 惯例）+ **key 门槛票单独拍板**（D-50 先例）；holdout/ 只做最终评测、评测前禁读（防泄漏纪律，M2 issue 03/05 先例）。
 

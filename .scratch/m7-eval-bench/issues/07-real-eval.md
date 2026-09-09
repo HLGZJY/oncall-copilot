@@ -1,4 +1,6 @@
 Status: needs-triage
+
+> 评审已定（D-58–D-65），但本票附双门槛：①key 门槛票单独拍板 ②活 demo 栈 + chaos 环境就绪——开工前需用户确认。
 Blocked by: 06
 
 # 07 真实评测（key 门槛票 + 活栈环境门槛）

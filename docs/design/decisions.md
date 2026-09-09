@@ -3,7 +3,7 @@ title: "设计决策清单"
 summary: "已拍板的关键决策及理由；ADR 的三条判据与存放位置"
 source: docs/reference/_sources/项目信息.md + docs/prd.md + 2026-09-05 基调会话
 status: active
-updated: 2026-09-09（M6 评审 D-49–D-57）
+updated: 2026-09-09（M7 评审 D-58–D-65）
 read_when: 动手前想知道"这事儿定过没有"；或要新写 ADR 时
 ---
 
@@ -70,13 +70,21 @@ read_when: 动手前想知道"这事儿定过没有"；或要新写 ADR 时
 | D-55 | M6 存储权威划分与第九表 | **SQLite `kb_chunks` 第九表为权威**（超架构 §4 八表规划显式偏差，随票回写架构），Chroma 只存向量索引可全量重建；块字段：`id/incident_id(FK)/investigation_id(FK,nullable)/section/seq/text/source_meta_json/hit_count/created_at/superseded_at` | 「可回溯禁虚构」要文本权威在 SQL 侧（可审计可 join）；Chroma 是索引组件非权威库（R1）；第九表走 D-31/D-46 同款评审+回写通道 | 已定（2026-09-09，M6 评审 G7） |
 | D-56 | M6 入库门槛与触发 | **门槛 = incident `mitigated`（恢复验证实证）；触发 = confirm 同步链收尾后同步触发**（失败落日志重试不阻塞处置出口）；未实证（investigating/escalated/failed）永不入库；escalated 案例留 M7 人工标注通道 | 知识污染第一道防线把守在入库口（R5：LLM08 向量与嵌入弱点）；同步触发免后台任务复杂度 | 已定（2026-09-09，M6 评审 G8） |
 | D-57 | M6 缓存重复判定边界 | **指纹精确命中（D-14 含桶口径）+ 源事件 mitigated → 复用整报告关联出口（`reused_from`）不重查**；复用不更新 hit_count（M7 口径分离）；指纹命中但源非 mitigated → 正常开调查；指纹未命中但向量相似 → 只作参考证据 | 缓存省一次调查（步数/成本/时延）整报告收益最大；0 漏报纪律下复用前提是既往结论已实证（保守方向同 D-14）；hit_count 只计真实向量召回，保 M7 指标纯净 | 已定（2026-09-09，M6 评审 G9） |
+| D-58 | M7 Runner 形态 | **进程内 harness 直跑**（LoopComponents 装配 `run_investigation`，消费 InvestigationResult 既有列不扩契约）；mock 档进 CI，真实档 `ONCALL_RUN_M7_EVAL=1` + chaos 注入（M5/M6 真实 e2e 先例） | mock 档须秒级回归，HTTP 打活栈做不到；`ONCALL_RUN_*` 惯例使环境门槛显式化 | 已定（2026-09-09，M7 评审 G1） |
+| D-59 | M7 判对错两级 | **规则匹配兜底全量**（根因关键词 + `normalize_hypothesis_text` 规范化比对）→ **LLM-as-judge 只复核规则未命中样本**（judge 经 `ONCALL_LLM_*` 独立 env 配置，与被评模型解耦防自评）→ 人工抽检 20%；judge 契约先冻结 mock 实现，真实 judge 是 key 门槛票（D-50 先例）；`judged_by` 三值 `rule/judge/human` 落 eval_runs | 规则层确定性可测零成本；judge 只处理模糊地带（母本「判对错两级」原意）；契约先冻结保 mock-only 纪律不破 | 已定（2026-09-09，M7 评审 G2） |
+| D-60 | M7 成本口径与 M9 并入边界 | **只做成本列埋点、不做展示层**（PRD 允许 M9 并入）：tokens/cost_cny 用 InvestigationResult 既有合计（G8 估算），`usage_log` 实测 usage 另列分列不混算；展示归 M8/M9 | 成本列已是矩阵验收口径，埋点即够；展示层是 M9 独立差异化叙事，W6 冲刺不摊薄 | 已定（2026-09-09，M7 评审 G3） |
+| D-61 | M7 N 遍与 flaky 容忍 | **每剧本每模型 N=3，报均值±极差**；同剧本 3 遍判定不一致 → 行标 `unstable` 单列不静默平均；失败模式按多数归类，无多数落 unknown；真实档超预算按 PRD 裁剪③（降单模型）上报 | N=1 把 LLM flaky 当真实回归；N=5 成本翻倍收益边际；极差比方差对小样本更直观 | 已定（2026-09-09，M7 评审 G4） |
+| D-62 | M7 报告产物与落点 | **双产物**：`eval_runs` 第十表 = 明细权威（可 SQL 审计可复算）；`datasets/eval/` 导出 `runs-<date>.json` + `report-<date>.md`（README 挂图引用），**进 git**（评测报告是面试资产须可追溯） | D-49 权威单源哲学——表是权威导出是序列化副本；落 `.scratch/` 会被当临时物，落 `datasets/` 与黄金集同域 | 已定（2026-09-09，M7 评审 G5） |
+| D-63 | M7 失败模式归类规则 | **规则链 + unknown 强制人工**：优先消费循环六值（D-28）→ miss 且六值为空走规则归 `no_signal`/`plan_error`（证据步信号/步数分布）→ 归不进落 `unknown` 禁丢弃进人工通道（issue Comments 登记后回填） | 六值已是主循环契约，M7 只消费与兜底不重造归类器；unknown 通道兑现硬规 7「强制归类不丢弃」 | 已定（2026-09-09，M7 评审 G6） |
+| D-64 | M7 复用出口与 escalated 指标口径 | **复用出口（`reused_from`）不计入 Top-1/Top-3 命中分母**，单列复用命中率（D-57 hit_count 口径分离延伸到矩阵列）；**escalated 不计入失败**，单列 escalated + 走 D-56 人工标注通道（标注根因后可回补正常样本）；降准/漏报不得被复用与 escalated 稀释 | 缓存有效性与调查质量是两类指标混算即失真；escalated = 转人工不是丢弃（D-28），计入失败冤枉系统 | 已定（2026-09-09，M7 评审 G7） |
+| D-65 | M7 模型矩阵选型与切换面 | **DeepSeek + Qwen 同族对比**，经 `ONCALL_LLM_BASE_URL/MODEL/API_KEY` env profile 参数化装配（`from_env` 现成切换面），**零硬编码模型名进代码**；具体档位与单价随 issue 07 key 门槛票实测回填 | 切换面已 env 驱动（D-19 面），矩阵只是多次装配；硬编码模型名使第三次对比成代码改动 | 已定（2026-09-09，M7 评审 G8） |
 
 
 ## 待定（进入对应里程碑前必须 grill 敲定）
 
 - [x] ~~issue 追踪器选型（GitHub Issues vs `.scratch/`）~~ → **已定，见 D-10**（2026-09-06）
 - [x] ~~`CONTEXT.md` 首批术语的权威定义~~ → **已完成**（30 个术语 / 6 类，2026-09-06）
-- [ ] 评测判对错细则（语义匹配规则 + LLM-as-judge 抽检比例）——M7 前
+- [x] ~~评测判对错细则（语义匹配规则 + LLM-as-judge 抽检比例）~~ → **已定，见 D-59**（2026-09-09，M7 评审 G2）
 - [ ] holdout 同步（false-positive-flap 等新剧本补 holdout 采集至每剧本 ×3）并清空 `HOLDOUT_SYNC_PENDING`（src/oncall/scenarios/schema.py）恢复 R2 成对硬约束——M7 前（D-21 / issue 06）
 - [ ] 第二迁移演示环境选型（Sock Shop / 另一套 compose）——M8 前
 - [ ] issue 追踪器是否升级为 GitHub Issues——建远端仓库时再评估

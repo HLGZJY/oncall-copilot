@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 05
 
 # 06 Makefile/CI 回归收口 + 架构回写 + 文档

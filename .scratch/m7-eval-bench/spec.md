@@ -1,8 +1,8 @@
 # m7-eval-bench · Spec
 
-M7 评测台（剧本 runner + 指标矩阵 + 模型对比 + 回归）（W6，PRD §7-M7）。**权威设计**：`docs/design/m7-eval-bench-design.md`（status: **draft**，2026-09-09 草案完成；G1–G8 决策点已预填推荐解，**待用户逐条拍板**，定案登记 `decisions.md` D-58+）。
+M7 评测台（剧本 runner + 指标矩阵 + 模型对比 + 回归）（W6，PRD §7-M7）。**权威设计**：`docs/design/m7-eval-bench-design.md`（status: **reviewed**，2026-09-09 G1–G8 用户逐条拍板全采纳推荐解，定案登记 `decisions.md` **D-58–D-65**；按编号顺序派工）。
 
-> **派工冻结**：G1–G8 评审通过前本目录 issue 一律 `needs-triage`，**不得开工**（设计票零写码纪律）。
+> **派工解冻**：issue 01–06 ready-for-agent 按编号顺序派工；issue 07 附双门槛（key 门槛票 + 活栈环境），开工前需用户确认。
 
 ## 目标
 

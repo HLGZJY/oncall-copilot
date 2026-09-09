@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-agent
 Blocked by: 01
 
 # 02 剧本 runner（LoopComponents 装配 + mock/真实双档）

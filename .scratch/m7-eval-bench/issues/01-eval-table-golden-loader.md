@@ -1,4 +1,4 @@
-Status: needs-triage
+Status: ready-for-agent
 
 # 01 eval_runs 第十表 + eval 模块骨架 + golden 加载器（防泄漏守卫）
 
