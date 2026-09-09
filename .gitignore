@@ -48,3 +48,6 @@ $RECYCLE.BIN/
 .vscode/
 .idea/
 *.swp
+
+# 本地工作明细（派工 prompt / e2e 实测 json），按 M5 先例不进版本库
+.scratch/tmp/
