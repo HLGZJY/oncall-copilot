@@ -133,6 +133,10 @@ ignore_imports = [
 # ───────────────────────── bandit（A6 安全扫描）─────────────────────────
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
+# B404/B603：受控执行器（remediation/executor.py，M5 issue 05）是唯一登记的
+# subprocess 外呼面——argv 仅来自 allowlist.render_argv 白名单渲染（D-42）、
+# shell=False 列表参数、架构守卫 test_no_shell_true AST 断言三重看管（A6）。
+skips = ["B404", "B603"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/oncall"]

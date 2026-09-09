@@ -168,6 +168,10 @@ def build_execute_action_handler(
                     "step": step_no,
                     "action": step_action,
                     "command": command,
+                    # issue 05 落点：原始参数模板 dict（含 $var 原文）随批准对象锁定
+                    # （D-39），executor 执行期经 runtime_values 注入后过白名单正则；
+                    # `command` 仍是给人看的预览，永不进入执行（D-42）。
+                    "params": dict(getattr(step, "params", None) or {}),
                     "impact": impact,
                     "runtime_params": runtime_params,
                 }

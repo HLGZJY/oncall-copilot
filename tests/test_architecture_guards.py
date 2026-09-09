@@ -166,6 +166,32 @@ class TestSourceGuards:
             "下一步: 改为 UPPER_CASE 常量 + Final 注解，或封装进类/函数作用域。"
         )
 
+    def test_no_shell_true(self):
+        """A6（M5 issue 05/G4/D-42）: 禁 shell=True 拼串——subprocess 一律列表参数。
+
+        bandit B602 只覆盖部分调用形态，这里用 AST 扫描兜住全部 `shell=True`
+        关键字实参（含变量别名绕不过：只放行字面量 True 的缺席）。
+        """
+        offenders: list[str] = []
+        for path in _iter_py_files(SRC_ROOT):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                for kw in node.keywords:
+                    if (
+                        kw.arg == "shell"
+                        and isinstance(kw.value, ast.Constant)
+                        and kw.value.value is True
+                    ):
+                        offenders.append(f"{_rel_module(path)}:行{node.lineno}")
+        assert not offenders, (
+            f"发现 shell=True 拼串调用: {offenders}。"
+            "下一步: 改 subprocess 列表参数 + shell=False；命令一律经 "
+            "remediation/allowlist.render_argv 白名单渲染（D-42），"
+            "确需放宽先过 decisions.md 评审。"
+        )
+
     def test_prompts_live_in_template_files(self):
         """A2: 业务代码禁止内联拼长 prompt；prompt 一律放 prompts/ 模板文件。"""
         offenders: list[str] = []
