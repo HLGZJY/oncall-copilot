@@ -135,6 +135,7 @@ ignore_imports = [
     "oncall.infra.llm -> openai",
     "oncall.infra.llm -> anthropic",
     "oncall.infra.llm_planner -> openai",
+    "oncall.infra.llm_judge -> openai",
 ]
 
 # ───────────────────────── bandit（A6 安全扫描）─────────────────────────

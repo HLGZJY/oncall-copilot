@@ -78,6 +78,9 @@ read_when: 动手前想知道"这事儿定过没有"；或要新写 ADR 时
 | D-63 | M7 失败模式归类规则 | **规则链 + unknown 强制人工**：优先消费循环六值（D-28）→ miss 且六值为空走规则归 `no_signal`/`plan_error`（证据步信号/步数分布）→ 归不进落 `unknown` 禁丢弃进人工通道（issue Comments 登记后回填） | 六值已是主循环契约，M7 只消费与兜底不重造归类器；unknown 通道兑现硬规 7「强制归类不丢弃」 | 已定（2026-09-09，M7 评审 G6） |
 | D-64 | M7 复用出口与 escalated 指标口径 | **复用出口（`reused_from`）不计入 Top-1/Top-3 命中分母**，单列复用命中率（D-57 hit_count 口径分离延伸到矩阵列）；**escalated 不计入失败**，单列 escalated + 走 D-56 人工标注通道（标注根因后可回补正常样本）；降准/漏报不得被复用与 escalated 稀释 | 缓存有效性与调查质量是两类指标混算即失真；escalated = 转人工不是丢弃（D-28），计入失败冤枉系统 | 已定（2026-09-09，M7 评审 G7） |
 | D-65 | M7 模型矩阵选型与切换面 | **DeepSeek + Qwen 同族对比**，经 `ONCALL_LLM_BASE_URL/MODEL/API_KEY` env profile 参数化装配（`from_env` 现成切换面），**零硬编码模型名进代码**；具体档位与单价随 issue 07 key 门槛票实测回填 | 切换面已 env 驱动（D-19 面），矩阵只是多次装配；硬编码模型名使第三次对比成代码改动 | 已定（2026-09-09，M7 评审 G8） |
+| D-66 | M7 真实档模型档位（key 门槛票） | **kimi-k2.6（质量上探）+ kimi-k2.5（性价比基线）**，judge 用 moonshot-v1-8k（防自评独立 env）。原拍板 kimi-k2-turbo/0905 系 K2 系列已下线（2026-05-25），2026-09-09 复核改选现役档；单价 env 化（`*_PRICE_IN/OUT`，¥/M tokens）随牌价更新 | K2 系 EOL 不可调用；2 档位维持 G8「质量×成本×延迟」对比叙事；judge 用最便宜可胜任档压成本 | 已定（2026-09-09，issue 07 开工确认） |
+| D-67 | M7 key 落位方式 | **本地 `.env`**（gitignore 已覆盖，模板 `.env.example`）：`load_env_file` 只补缺不覆盖（显式 env 优先），路径 `ONCALL_M7_ENV_FILE` 可换；key 不落库不入 git | 免重复 export；D-50 先例（key 门槛票不落库）；模板入库保证结构可追溯 | 已定（2026-09-09，issue 07 开工确认） |
+| D-68 | M7 真实 judge client 收口 | **新增 `infra/llm_judge.py`**（`OpenAIJudgeClient.chat_json`，C4+C5 收口第四成员）：JSON Mode + 围栏宽容抽取 + 异常契约逐字对齐 D-07；judge env 映射 `judge_config_from_env` 单源在 infra，`judging.resolve_judge_config` 委托；judge 异常重试 ≤1 后回退规则 miss 留 `judge_error` 追溯痕 | llm.py 283 行逼近 C6 不宜再扩；与 llm_planner 同构热切换；judge 崩溃不炸跑批（禁丢弃纪律：回退可见可审计） | 已定（2026-09-09，issue 07 实现） |
 
 
 ## 待定（进入对应里程碑前必须 grill 敲定）

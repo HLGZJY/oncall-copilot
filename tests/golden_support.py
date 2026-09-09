@@ -21,13 +21,13 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel
 
+from oncall.eval.evidence import make_golden_handlers as _src_make_golden_handlers
+from oncall.eval.golden import GoldenAnnotationError, GoldenScenario
 from oncall.harness.loop import LoopComponents
 from oncall.harness.permission import PermissionGate
 from oncall.harness.planner import MockPlanner, PlannerDecision
 from oncall.harness.tools.registry import ToolRegistry, register_six_tools
-from oncall.harness.tools.schemas import ToolResult, ToolStatus
 from oncall.harness.verifier import MockVerifierJudge, Verifier, VerifierVerdict
 
 GOLDEN_DEV_DIR = Path(__file__).resolve().parents[1] / "datasets" / "golden" / "dev"
@@ -88,96 +88,17 @@ def _direction_in_window(doc: dict[str, Any], start: datetime, end: datetime) ->
 
 
 def make_golden_handlers(doc: dict[str, Any]) -> dict[str, Any]:
-    """取证四工具 Fetcher 替身：返回值全部派生自 golden timeline（D-18 同源）。
+    """取证四工具 Fetcher 替身（D-18 同源）——委托 `oncall.eval.evidence` 单源。
 
-    每个返回值都带完整 `timeline`（runs 时间窗 + 告警条目）——真实 Planner 的
-    调查视图缺事件锚点（harness 缺口，issue 08 注记记录），替身侧以「任意一次
-    成功调用即可见全量 golden 上下文」补偿，保证评价公平；仍不含
-    root_cause / investigation_path / remediation（不把答案喂给被评对象）。
+    src 侧实现（M7 issue 07 真实档装配复用同一份）：返回值全部派生自 golden
+    timeline；**不含 root_cause / investigation_path / remediation**（不把答案
+    喂给被评对象）。本函数只做 doc dict → GoldenScenario 适配，e2e 测试面不变。
     """
-
-    def timeline_evidence() -> dict[str, Any]:
-        return {
-            "runs": [
-                {"started_at": run["started_at"], "recovered_at": run["recovered_at"]}
-                for run in doc["runs"]
-            ],
-            "alerts": [
-                {
-                    "alert_name": entry["alert_name"],
-                    "labels": entry["labels"],
-                    "fired_at": entry["fired_at"],
-                    "resolved_at": entry["resolved_at"],
-                }
-                for entry in _timeline_entries(doc)
-            ],
-        }
-
-    def make(tool: str, payload_key: str, build: Any) -> Any:
-        def handler(args: BaseModel, *, timeout_seconds: float) -> ToolResult:
-            return ToolResult(
-                tool=tool,
-                status=ToolStatus.OK,
-                data={
-                    "scenario": doc["scenario"],
-                    "timeline": timeline_evidence(),
-                    payload_key: build(args),
-                },
-                meta={"source": "golden-dev-timeline"},
-            )
-
-        return handler
-
-    def metrics_payload(args: Any) -> dict[str, Any]:
-        start = args.start if hasattr(args, "start") else golden_time_anchor(doc)
-        end = args.end if hasattr(args, "end") else start
-        window_hits = [
-            {"alert_name": e["alert_name"], "labels": e["labels"], "fired_at": e["fired_at"]}
-            for e in _timeline_entries(doc)
-            if _window_overlaps(e, start, end)
-        ]
-        return {
-            "promql": getattr(args, "promql", "n/a"),
-            "direction": _direction_in_window(doc, start, end),
-            "alerts_in_window": window_hits,
-        }
-
-    def logs_payload(args: Any) -> dict[str, Any]:
-        return {
-            "selector": getattr(args, "selector", "n/a"),
-            "lines": [
-                f"{e['fired_at']} {e['alert_name']} fired labels={json.dumps(e['labels'])}"
-                for e in _timeline_entries(doc)
-            ],
-        }
-
-    def anomaly_payload(args: Any) -> dict[str, Any]:
-        values = getattr(args, "values", [])
-        return {
-            "direction": _direction_in_window(doc, golden_time_anchor(doc), golden_time_anchor(doc))
-            if values
-            else "flat",
-            "anomaly_windows": [
-                {"alert_name": e["alert_name"], "fired_at": e["fired_at"], "run": e["run"]}
-                for e in _timeline_entries(doc)
-            ],
-        }
-
-    def topology_payload(args: Any) -> dict[str, Any]:
-        jobs = sorted({e["labels"].get("job", "n/a") for e in _timeline_entries(doc)})
-        instances = sorted({e["labels"].get("instance", "n/a") for e in _timeline_entries(doc)})
-        return {
-            "services": jobs,
-            "instances": instances,
-            "alert_names": sorted({e["alert_name"] for e in _timeline_entries(doc)}),
-        }
-
-    return {
-        "query_metrics": make("query_metrics", "metrics", metrics_payload),
-        "search_logs": make("search_logs", "logs", logs_payload),
-        "detect_anomaly": make("detect_anomaly", "anomaly", anomaly_payload),
-        "get_topology": make("get_topology", "topology", topology_payload),
-    }
+    try:
+        golden = GoldenScenario.model_validate(doc)
+    except Exception as exc:  # e2e 夹具文档缺 remediation 等标注字段时兜底
+        raise GoldenAnnotationError(f"golden 文档缺标注字段，不可作证据面源: {exc}") from exc
+    return _src_make_golden_handlers(golden)
 
 
 #: mock 剧本的工具与查询词（fixture 常量：按 golden investigation_path 步骤语义对应；

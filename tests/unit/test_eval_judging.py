@@ -18,18 +18,22 @@ import pytest
 from sqlalchemy import StaticPool, create_engine
 from sqlalchemy.orm import Session
 
-from oncall.classify.client import LLMOutputError
+from oncall.classify.client import LLMClassifierError, LLMOutputError
 from oncall.db import create_tables
 from oncall.eval.golden import GoldenScenario
 from oncall.eval.judging import (
     JUDGE_ENV_PREFIX,
+    JUDGE_ENV_SUFFIXES,
     JUDGE_MODEL_ENV,
     Judge,
     JudgeInput,
     JudgeOutput,
     MockJudge,
+    RealJudge,
     judger_from_judge,
+    resolve_judge_config,
     rule_judge,
+    two_tier_judger,
 )
 from oncall.eval.runner import Judgment, ScenarioCase, ScenarioRunSpec, run_scenario
 from oncall.harness.loop import InvestigationResult, LoopComponents
@@ -256,3 +260,98 @@ def test_rule_judge_usable_as_judger_in_run_scenario():
         session.commit()
     assert all(row.verdict == "top1" for row in rows)
     assert all(row.judged_by == "rule" for row in rows)
+
+
+# ── M7-T7：真实 judge 装配（ONCALL_JUDGE_LLM_* env → infra client 注入）──
+
+
+class _FakeJudgeClient:
+    """OpenAIJudgeClient 替身（契约面：chat_json + usage_log，零真实调用）。"""
+
+    def __init__(self, payloads: list[dict[str, str] | Exception]) -> None:
+        self._payloads = list(payloads)
+        self._cursor = 0
+        self.prompts: list[tuple[str, str]] = []
+        self.usage_log: list[object] = []
+
+    def chat_json(self, system: str, user: str) -> dict[str, str]:
+        self.prompts.append((system, user))
+        item = self._payloads[self._cursor]
+        self._cursor += 1
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+def test_resolve_judge_config_maps_prefix_to_llm_env():
+    env = {
+        "ONCALL_JUDGE_LLM_BASE_URL": "https://api.moonshot.cn/v1",
+        "ONCALL_JUDGE_LLM_MODEL": "moonshot-v1-8k",
+        "ONCALL_JUDGE_LLM_API_KEY": "sk-test",
+        "ONCALL_JUDGE_LLM_TIMEOUT_SECONDS": "20",
+    }
+    config = resolve_judge_config(env)
+    assert config.base_url == "https://api.moonshot.cn/v1"
+    assert config.model == "moonshot-v1-8k"
+    assert config.api_key == "sk-test"
+    assert config.timeout_seconds == 20.0
+
+
+def test_resolve_judge_config_suffixes_frozen():
+    """judge env 尾词与 profile 同词汇（BASE_URL/MODEL/API_KEY/TIMEOUT_SECONDS）。"""
+    assert JUDGE_ENV_SUFFIXES == ("BASE_URL", "MODEL", "API_KEY", "TIMEOUT_SECONDS")
+
+
+def test_real_judge_wraps_client_and_validates_contract():
+    client = _FakeJudgeClient([{"verdict": "top3", "reason": "排查方向命中"}])
+    judge = RealJudge(client)
+    assert isinstance(judge, Judge)
+    out = judge.judge(
+        JudgeInput(
+            conclusion="内存泄漏",
+            evidence_summary="假设甲; 假设乙",
+            golden_scenario="cpu-spike",
+            golden_root_cause="cpu 饱和",
+        )
+    )
+    assert out.verdict == "top3"
+    system, user = client.prompts[0]
+    assert "JSON" in system and "cpu 饱和" in user and "假设甲" in user
+
+
+def test_real_judge_malformed_output_raises_llm_output_error():
+    client = _FakeJudgeClient([{"verdict": "excellent", "reason": "越界"}])
+    judge = RealJudge(client)
+    payload = JudgeInput(
+        conclusion="c", evidence_summary="e", golden_scenario="s", golden_root_cause="r"
+    )
+    with pytest.raises(LLMOutputError, match="契约校验"):
+        judge.judge(payload)
+
+
+def test_two_tier_rule_hit_short_circuits_without_judge_call():
+    client = _FakeJudgeClient([])
+    judger = two_tier_judger(RealJudge(client))
+    judgment = judger(_golden(), _result("确认 cpu 饱和导致事件循环饥饿"))
+    assert judgment.verdict == "top1" and judgment.judged_by == "rule"
+    assert client.prompts == []  # 规则命中零 judge 成本
+
+
+def test_two_tier_miss_falls_back_to_judge():
+    client = _FakeJudgeClient([{"verdict": "top3", "reason": "假设层语义命中"}])
+    judger = two_tier_judger(RealJudge(client))
+    judgment = judger(_golden(), _result("磁盘 IO 打满", ["网络抖动"]))
+    assert judgment.verdict == "top3"
+    assert judgment.judged_by == "judge"
+    assert len(client.prompts) == 1
+
+
+def test_two_tier_judge_crash_falls_back_to_rule_miss_with_trace():
+    """judge 异常不炸跑批：重试 1 次后回退规则 miss，reason 留 judge_error 追溯痕。"""
+    client = _FakeJudgeClient([LLMClassifierError("限流"), LLMClassifierError("仍失败")])
+    judger = two_tier_judger(RealJudge(client))
+    judgment = judger(_golden(), _result("磁盘 IO 打满"))
+    assert judgment.verdict == "miss"
+    assert judgment.judged_by == "rule"
+    assert "judge_error" in judgment.reason
+    assert len(client.prompts) == 2  # 重试 ≤1 次

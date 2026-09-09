@@ -1,16 +1,17 @@
-"""make eval / make eval-real 一键入口（m7 issue 06 / G1 回归面）。
+"""make eval / make eval-real 一键入口（m7 issue 06/07 / G1+G8 回归面）。
 
 编排复用 issue 05 `run_matrix` + `write_report`（勿重造）与 issue 03
 `rule_judge`（判定接缝），组件装配全 mock（MockPlanner + MockVerifierJudge，
 零真实 API 调用——mock 档 CI 秒级回归的前提，G1）。
 
 - `run_mock_eval`：2 profile × 12 dev 剧本 × N=3 矩阵，双产物落 `datasets/eval/`；
-- `run_eval_real`：只做 `ONCALL_RUN_M7_EVAL=1` 门槛校验（`require_real_tier`
-  复用，D-58），**不真跑**——真实档跑批与档位回填归 issue 07，落地前显式
-  deferred 信号（静默 mock 会伪装成真评测，0 漏报纪律）。
+- `run_eval_real`（issue 07 兑现，见 `real.py`）：`ONCALL_RUN_M7_EVAL=1` 解锁后
+  装配真实 planner（`ONCALL_LLM_PROFILE_<NAME>_*` env）+ 真实 LLM-as-judge
+  （`ONCALL_JUDGE_LLM_*` 防自评），dev 全集 × 2 模型 × N=3，usage 实测回填。
 
-CLI：`python -m oncall.eval.entry [mock|real]`（Makefile `eval` / `eval-real`
-与 CI eval-regression job 同源调用此入口，防 shell 层与 Python 层分叉）。
+CLI：`python -m oncall.eval.entry [mock|real] [--out-dir DIR] [--scenarios a,b]
+[--n-runs N]`（Makefile `eval` / `eval-real` 同源调用，防 shell 层与 Python 层
+分叉；真实档不进 CI——CI 仍为 mock 档回归面）。
 """
 
 from __future__ import annotations
@@ -27,14 +28,15 @@ from sqlalchemy.orm import Session
 from oncall.db import create_tables
 from oncall.eval.golden import DEFAULT_GOLDEN_ROOT, GoldenScenario, load_golden_dir
 from oncall.eval.judging import rule_judge
-from oncall.eval.report import EVAL_DIR, ModelProfile, run_matrix, write_report
-from oncall.eval.runner import (
-    N_RUNS,
-    REAL_TIER_ENV,
-    ScenarioCase,
-    ScenarioRunSpec,
-    require_real_tier,
+from oncall.eval.real import (  # noqa: F401 (CLI 消费/测试再导出)
+    ENV_FILE_ENV,
+    PRICE_SUFFIXES,
+    REAL_PROFILE_NAMES,
+    load_env_file,
+    run_eval_real,
 )
+from oncall.eval.report import EVAL_DIR, ModelProfile, run_matrix, write_report
+from oncall.eval.runner import N_RUNS, REAL_TIER_ENV, ScenarioCase, ScenarioRunSpec
 from oncall.harness.loop import LoopComponents
 from oncall.harness.permission import PermissionGate
 from oncall.harness.planner import MockPlanner
@@ -43,7 +45,6 @@ from oncall.harness.verifier import MockVerifierJudge, Verifier, VerifierVerdict
 
 __all__ = [
     "MOCK_PROFILE_NAMES",
-    "REAL_TIER_DEFERRED_MSG",
     "main",
     "run_eval_real",
     "run_mock_eval",
@@ -51,9 +52,6 @@ __all__ = [
 
 #: mock 档矩阵 profile 名（G8：档位标签非模型名，具体模型档位随 issue 07 回填）
 MOCK_PROFILE_NAMES = ("mock-a", "mock-b")
-
-#: 真实档 deferred 信号文案（issue 07 落地前入口不真跑）
-REAL_TIER_DEFERRED_MSG = "真实档跑批归 issue 07"
 
 
 def _mock_factory(golden: GoldenScenario, run_idx: int, profile: ModelProfile) -> LoopComponents:
@@ -133,23 +131,30 @@ def run_mock_eval(
             session.close()
 
 
-def run_eval_real() -> None:
-    """真实档入口门槛校验：未解锁 raise；解锁后 deferred（issue 07 落地前不真跑）。"""
-    require_real_tier()
-    raise NotImplementedError(
-        f"{REAL_TIER_DEFERRED_MSG}：入口与 {REAL_TIER_ENV}=1 门槛已收口（本票），"
-        "真实档组件装配/跑批/档位回填随 issue 07 落地"
-    )
+def _parse_cli_args(args: list[str]) -> tuple[Path, list[str] | None, int]:
+    """CLI 旗标解析：`--out-dir` / `--scenarios a,b` / `--n-runs N`。"""
+    out_dir: Path = EVAL_DIR
+    scenario_slugs: list[str] | None = None
+    n_runs = N_RUNS
+    for flag in ("--out-dir", "--scenarios", "--n-runs"):
+        if flag not in args:
+            continue
+        idx = args.index(flag)
+        raw = args.pop(idx + 1)
+        args.pop(idx)
+        if flag == "--out-dir":
+            out_dir = Path(raw)
+        elif flag == "--scenarios":
+            scenario_slugs = [s.strip() for s in raw.split(",") if s.strip()]
+        else:
+            n_runs = int(raw)
+    return out_dir, scenario_slugs, n_runs
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """CLI：`python -m oncall.eval.entry [mock|real] [--out-dir DIR]`，默认 mock。"""
+    """CLI：`python -m oncall.eval.entry [mock|real] [--out-dir DIR] ...`，默认 mock。"""
     args = list(sys.argv[1:] if argv is None else argv)
-    out_dir: Path = EVAL_DIR
-    if "--out-dir" in args:
-        idx = args.index("--out-dir")
-        out_dir = Path(args.pop(idx + 1))
-        args.pop(idx)
+    out_dir, scenario_slugs, n_runs = _parse_cli_args(args)
     tier = args[0] if args and args[0] in ("mock", "real") else "mock"
     if tier == "real":
         if os.environ.get(REAL_TIER_ENV) != "1":
@@ -159,14 +164,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 1
         try:
-            run_eval_real()
-        except NotImplementedError:
-            sys.stderr.write(f"==> {REAL_TIER_DEFERRED_MSG}（门槛已通过）\n")
-            return 1  # deferred：真实档跑批未落地，非零退出防 CI 假绿
+            rows, json_path, md_path = run_eval_real(
+                out_dir=out_dir, scenario_slugs=scenario_slugs, n_runs=n_runs
+            )
+        except Exception as exc:
+            sys.stderr.write(f"==> 真实档跑批失败：{exc}\n")
+            return 1
+        total_cost = sum(
+            ((r.run_json or {}).get("usage_real") or {}).get("cost_cny", 0.0) for r in rows
+        )
+        sys.stdout.write(
+            f"==> 真实档矩阵完成：{len(rows)} 行，usage 实测成本合计 ¥{total_cost:.4f}\n"
+        )
+        sys.stdout.write(f"==> JSON：{json_path}\n==> 人读报告：{md_path}\n")
         return 0
     _, json_path, md_path = run_mock_eval(out_dir=out_dir)
-    sys.stdout.write(f"==> mock 档矩阵完成：{json_path}\n")
-    sys.stdout.write(f"==> 人读报告：{md_path}\n")
+    sys.stdout.write(f"==> mock 档矩阵完成：{json_path}\n==> 人读报告：{md_path}\n")
     return 0
 
 

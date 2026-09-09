@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -20,13 +21,22 @@ from sqlalchemy.orm import Session
 
 from oncall.db import create_tables
 from oncall.eval.entry import (
+    ENV_FILE_ENV,
     MOCK_PROFILE_NAMES,
-    REAL_TIER_DEFERRED_MSG,
+    REAL_PROFILE_NAMES,
+    load_env_file,
     main,
     run_eval_real,
     run_mock_eval,
 )
+from oncall.eval.judging import MockJudge
 from oncall.eval.runner import REAL_TIER_ENV
+from oncall.harness.loop import LoopComponents
+from oncall.harness.permission import PermissionGate
+from oncall.harness.planner import MockPlanner
+from oncall.harness.tools.registry import ToolRegistry
+from oncall.harness.verifier import MockVerifierJudge, Verifier, VerifierVerdict
+from oncall.infra.llm import LLMConfigError
 
 
 def _memory_session() -> Session:
@@ -83,11 +93,113 @@ class TestRealTierGate:
         with pytest.raises(RuntimeError, match=REAL_TIER_ENV):
             run_eval_real()
 
-    def test_unlocked_entry_reachable_but_deferred(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """解锁后入口可达、不真跑：issue 07 落地前显式 deferred 信号。"""
+
+# ── M7-T7：真实档兑现（run_eval_real 实跑装配面）──
+
+
+def _write_tiny_golden(root: Path) -> Path:
+    dev = root / "dev"
+    dev.mkdir(parents=True)
+    (dev / "cpu-spike.yaml").write_text(
+        "scenario: cpu-spike\n"
+        "root_cause: stress 进程把 cpu 打满\n"
+        "remediation: 停探针\n"
+        "investigation_path: [查指标]\n"
+        "runs: []\n",
+        encoding="utf-8",
+    )
+    return root
+
+
+def _fake_factory(golden: object, run_idx: int, profile: object) -> object:
+    """注入替身：MockPlanner 结论不中 golden 根因 → 走 judge 回退分支。"""
+    del run_idx, profile
+    return LoopComponents(
+        planner=MockPlanner(conclusion="磁盘 IO 打满"),
+        registry=ToolRegistry(),
+        gate=PermissionGate(),
+        verifier=Verifier(
+            judge=MockVerifierJudge(default=VerifierVerdict(supported=True, reason="mock 裁决"))
+        ),
+        now=lambda: datetime.now(UTC),
+    )
+
+
+class TestRunEvalReal:
+    def test_unlocked_runs_matrix_with_injected_faces(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """真实档兑现：解锁后入口实跑（注入替身面），矩阵 + 判定 + 双产物落盘。"""
         monkeypatch.setenv(REAL_TIER_ENV, "1")
-        with pytest.raises(NotImplementedError, match=REAL_TIER_DEFERRED_MSG):
-            run_eval_real()
+        golden_root = _write_tiny_golden(tmp_path / "golden")
+        with _memory_session() as session:
+            rows, json_path, md_path = run_eval_real(
+                db_session=session,
+                golden_root=golden_root,
+                out_dir=tmp_path / "out",
+                n_runs=1,
+                profile_names=("t-a", "t-b"),
+                components_factory=_fake_factory,
+                judge=MockJudge(verdict="top3", reason="judge 替身判定"),
+            )
+        assert len(rows) == 2 * 1 * 1
+        assert {row.model for row in rows} == {"t-a", "t-b"}
+        assert {row.the_set for row in rows} == {"dev"}
+        # 规则未命中 → judge 回退分支被消费（防自评两级的真实接线）
+        assert {row.judged_by for row in rows} == {"judge"}
+        assert {row.verdict for row in rows} == {"top3"}
+        assert json_path.exists() and md_path.exists()
+        assert "t-a" in md_path.read_text(encoding="utf-8")
+
+    def test_default_judge_missing_env_fails_fast(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """judge env 缺项构造期 fail-fast（LLMConfigError，禁静默回退 mock）。"""
+        monkeypatch.setenv(REAL_TIER_ENV, "1")
+        for key in (
+            "ONCALL_JUDGE_LLM_BASE_URL",
+            "ONCALL_JUDGE_LLM_MODEL",
+            "ONCALL_JUDGE_LLM_API_KEY",
+        ):
+            monkeypatch.delenv(key, raising=False)
+        golden_root = _write_tiny_golden(tmp_path / "golden")
+        with pytest.raises(LLMConfigError):
+            run_eval_real(golden_root=golden_root, db_session=_memory_session())
+
+    def test_real_profile_names_are_env_driven_labels(self) -> None:
+        """G8：profile 名是档位标签非模型名（模型名只活在 env / 报告回填）。"""
+        assert len(REAL_PROFILE_NAMES) == 2
+        assert all("-" in name or name.replace("-", "").isalnum() for name in REAL_PROFILE_NAMES)
+
+
+class TestEnvFile:
+    def test_load_env_file_fills_missing_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "# 注释行\n"
+            "\n"
+            "ONCALL_JUDGE_LLM_MODEL=moonshot-v1-8k\n"
+            'ONCALL_JUDGE_LLM_API_KEY="sk-quoted"\n'
+            "MALFORMED LINE WITHOUT EQUALS\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("ONCALL_JUDGE_LLM_MODEL", "already-set")
+        monkeypatch.delenv("ONCALL_JUDGE_LLM_API_KEY", raising=False)
+        loaded = load_env_file(env_file)
+        assert loaded["ONCALL_JUDGE_LLM_API_KEY"] == "sk-quoted"
+        assert os.environ["ONCALL_JUDGE_LLM_MODEL"] == "already-set"  # 不覆盖已有 env
+        assert os.environ["ONCALL_JUDGE_LLM_API_KEY"] == "sk-quoted"
+
+    def test_env_file_path_overridable_via_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        custom = tmp_path / "custom.env"
+        custom.write_text("K=V\n", encoding="utf-8")
+        monkeypatch.setenv(ENV_FILE_ENV, str(custom))
+        monkeypatch.delenv("K", raising=False)
+        assert load_env_file()["K"] == "V"
 
 
 class TestMain:
