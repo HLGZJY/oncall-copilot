@@ -15,6 +15,7 @@ actions:
       - action: docker.restore_cpuset
         params:
           container: oncall-demo-api-gw-1
+          cores: $cpuset_cores
 rollback: []
 verification:
   promql: 'histogram_quantile(0.95, sum by (le) (rate(demo_request_duration_seconds_bucket{endpoint!="/tasks"}[1m])))'
@@ -34,7 +35,8 @@ verification:
 2. 停掉 Pumba/stress-ng 容器 pumba-cpu-spike —— stress-ng 在目标 cgroup 内，
    容器停后进程随之终止。
 3. 恢复 api-gw（oncall-demo-api-gw-1）原始 cpuset（docker.restore_cpuset）：
-   原 cpuset 从记录文件读取，记录文件丢失时兜底为全核。
+   原 cpuset 从记录文件读取（执行期注入 `$cpuset_cores`，与 issue 05 运行时
+   注入裁决一致），记录文件丢失时兜底为全核。
 
 恢复判据（verification，与 golden remediation 实测回落值对齐）：
 处置后观察非 DB 路径 P95 回落至 0.05s 以内（即回到告警阈值之下），观察窗 60s。

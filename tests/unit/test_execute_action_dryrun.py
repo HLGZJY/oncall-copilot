@@ -89,7 +89,10 @@ class TestDryRunHappyPath:
         rendered = [c["command"] for c in cmds]
         assert "docker.remove_container name=cpu-spike-probe" in rendered
         assert "docker.remove_container name=pumba-cpu-spike" in rendered
-        assert "docker.restore_cpuset container=oncall-demo-api-gw-1" in rendered
+        # issue 07 裁决：cpu-spike 第 3 步补 $cpuset_cores 运行时模板（与 issue 05
+        # 白名单 {container, cores} 契约对齐），干跑期显式呈现不吞
+        expected = "docker.restore_cpuset container=oncall-demo-api-gw-1 cores=$cpuset_cores"
+        assert expected in rendered
         # 命令来自白名单原子操作引用 + runbook 参数模板，不是 runbook 正文/模型自由文本
         assert not any("rm -f" in c for c in rendered)
         assert all(c["action"].startswith(("docker.", "mysql.")) for c in cmds)

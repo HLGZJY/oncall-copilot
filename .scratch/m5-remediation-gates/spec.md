@@ -35,7 +35,7 @@ M5 处置与恢复验证（四道闸门）（W4 后半–W5 前半，PRD §7-M5�
 | 04 | 确认门 API（confirm/reject + GET 处置查询） | T4 / G2 / D-40 | 03 | resolved |
 | 05 | 命令白名单 + 受控执行器（allowlist + executor + 执行审计） | T5 / G4 / D-42 | 03 | resolved |
 | 06 | 恢复验证 + 回滚（verifier + 未恢复 rollback + 转人工） | T6 / G6/G7 / D-44/D-45 | 05 | resolved |
-| 07 | 验收断言与门禁（验收标准节逐条转机械断言 + mock e2e 2 剧本） | T7 | 01–06 | ready-for-agent |
+| 07 | 验收断言与门禁（验收标准节逐条转机械断言 + mock e2e 2 剧本） | T7 | 01–06 | resolved |
 | 08 | 真实 e2e 与收尾（活 demo 栈 2 剧本端到端自动处置恢复 + 回填翻 implemented + 架构 §4 回写核对） | T8 | 07 | ready-for-agent（**demo 栈就绪门槛：开工前需用户确认**） |
 
 ## M5/M6/M7 边界（spec 级写清）

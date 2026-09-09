@@ -128,14 +128,14 @@ read_when: 评审 M5 方案时；进入 M5 开发前；被问「写操作怎么�
 
 > 可实测、可判定；实测后回填打勾，不得虚构。设计期 mock-only（处置管线无 LLM，mock 决策脚本驱动 Planner），真实 demo 端到端留 T8（环境门槛：活 demo 栈，开工前需用户确认）。
 
-- [ ] **2 剧本端到端自动处置恢复**（PRD §7-M5 硬口径）：`cpu-spike` + `slow-sql`（G9 选型）在活 demo 栈注入故障 → mock 决策调查 → execute_action 干跑 → 人工 confirm → 受控执行 → 恢复验证通过 → incident 翻 mitigated——真实 e2e 断言（T8，demo 栈就绪门槛）
-- [ ] **写操作 100% 过确认门**（PRD §4「安全处置」）：全测试内无任何 execute_action 直接执行路径——所有写命令必经「干跑渲染 → pending → 人工 approve → 白名单校验 → 执行」；确认前系统不产生任何 demo 侧副作用（mock e2e 机械断言，T7）
-- [ ] **干跑不落地**（第 1 门）：execute_action 调用后 demo 侧状态零变化（指标/进程/容器快照比对），ToolResult 返回命令清单+影响面+proposal_id（单测机械断言）
-- [ ] **恢复验证判恢复/未恢复**（第 4 门）：runbook verification PromQL 回查——恢复路径 proposal 收尾 `recovered` + incident 翻 mitigated；未恢复路径自动执行 rollback 后仍失败 → 转人工（proposal 落 `escalated`、incident 保持 investigating，D-28）——mock 验证器断言两条路径
-- [ ] **全程留痕**（PRD「过程可信」延伸）：proposal 行含干跑 JSON（= 被批准的命令清单）、确认 decision/reason/时间、执行输出摘要、验证结果、回滚状态；执行器的每条白名单命令均落审计（含校验前后参数）——单测断言
-- [ ] **命令白名单拒绝越权**（第 3 门 + 硬规 3）：白名单外命令/参数（如任意 docker rm、shell 元字符注入样本）在执行器层被拒并留审计，runbook 引用不存在动作 → 拒绝加载——单测断言
-- [ ] **D-23 冻结面不破**：六工具集合、`ExecuteActionInput` 形状、`ToolResult` 形状、loop 主循环结构不变（import + 键集合断言）；`EvidenceStep`/`Hypothesis`/`InvestigationSession` 契约不倒改（D-25）
-- [ ] **全量门禁只增不减**：pytest（基线 541 passed / 10 skipped 只增不减）+ ruff check + ruff format --check + import-linter C3–C6 + A6 bandit 全绿，coverage ≥80%（harness 单独 ≥85%）
+- [ ] **2 剧本端到端自动处置恢复**（PRD §7-M5 硬口径）：`cpu-spike` + `slow-sql`（G9 选型）在活 demo 栈注入故障 → mock 决策调查 → execute_action 干跑 → 人工 confirm → 受控执行 → 恢复验证通过 → incident 翻 mitigated——真实 e2e 断言（T8，demo 栈就绪门槛；mock 侧全链路已由 issue 07 mock e2e 收口）
+- [x] **写操作 100% 过确认门**（PRD §4「安全处置」）：全测试内无任何 execute_action 直接执行路径——所有写命令必经「干跑渲染 → pending → 人工 approve → 白名单校验 → 执行」；确认前系统不产生任何 demo 侧副作用（实测：状态机迁移表键集合断言 pending 无执行出边 + 循环内干跑替身执行器零调用 + reject/终态再 confirm 409；`test_m5_frozen_face` + `test_m5_acceptance_gates`，T7）
+- [x] **干跑不落地**（第 1 门）：execute_action 调用后 demo 侧状态零变化（指标/进程/容器快照比对），ToolResult 返回命令清单+影响面+proposal_id（实测：`test_m5_acceptance_gates::test_dry_run_only_no_side_effects_and_toolresult_shape`——替身执行器零调用 + proposal pending + params_json 空 + dry_run_json 与 ToolResult 预览 deep-equal，T7；部件级 issue 02 单测）
+- [x] **恢复验证判恢复/未恢复**（第 4 门）：runbook verification PromQL 回查——恢复路径 proposal 收尾 `recovered` + incident 翻 mitigated；未恢复路径自动执行 rollback 后仍失败 → 转人工（proposal 落 `escalated`、incident 保持 investigating，D-28）——mock 验证器断言两条路径（实测：恢复侧 `test_m5_acceptance_gates::test_full_audit_trail_field_by_field`（mitigated）+ 未恢复侧 `test_m5_mock_e2e::test_mock_e2e_slow_sql_not_recovered_rollback_escalated`（escalated + investigating，$session_id 经 runtime_values 注入回滚）；两条路径部件级 issue 06 单测，T7）
+- [x] **全程留痕**（PRD「过程可信」延伸）：proposal 行含干跑 JSON（= 被批准的命令清单）、确认 decision/reason/时间、执行输出摘要、验证结果、回滚状态；执行器的每条白名单命令均落审计（含校验前后参数）——单测断言（实测：`test_m5_acceptance_gates::test_full_audit_trail_field_by_field` 逐字段对账——dry_run_json deep-equal（D-39）+ decision/confirm_reason/confirmed_at/executed_at/finished_at + params_json["execution"] issue 05 审计形状 + verify_result_json issue 06 形状；escalated 落点 rollback_status=rolled_back、verify_result_json 不落，T7）
+- [x] **命令白名单拒绝越权**（第 3 门 + 硬规 3）：白名单外命令/参数（如任意 docker rm、shell 元字符注入样本）在执行器层被拒并留审计，runbook 引用不存在动作 → 拒绝加载——单测断言（实测：`test_m5_command_gates`——注入样本（`;|` 元字符/白名单外动作/多余参数）执行器层 4 拒零执行留审计；runbook action/rollback 引用白名单外原子操作 RunbookValidationError 拒载；部件级 issue 01/05 单测，T7）
+- [x] **D-23 冻结面不破**：六工具集合、`ExecuteActionInput` 形状、`ToolResult` 形状、loop 主循环结构不变（import + 键集合断言）；`EvidenceStep`/`Hypothesis`/`InvestigationSession` 契约不倒改（D-25）（实测：`test_m5_frozen_face`——六工具集合/入参返回形状/ORM 冻结列/Session 字段精确键集合断言（M4 先例形制）；loop.py 零净增由 G1 主线保证 + 架构守卫 C6，T7）
+- [ ] **全量门禁只增不减**：pytest（基线 541 passed / 10 skipped 只增不减）+ ruff check + ruff format --check + import-linter C3–C6 + A6 bandit 全绿，coverage ≥80%（harness 单独 ≥85%）（T7 实测：**679 passed / 10 skipped**——票面 541/10 系 M3 末期旧值，issue 06 后真值 667/10；ruff 双检 + import-linter C3–C6 kept + bandit 全绿；coverage 归 T8 收尾统一出数）
 - [ ] **真实 e2e 回填**（T8）：2 剧本处置耗时/执行命令数/恢复窗口如实回填验收节与 issue Comments（禁虚构）；设计文档翻 `implemented`、D-39+ 落位核对、架构 §4 回写预告核对
 
 ## 依赖
