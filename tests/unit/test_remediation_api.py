@@ -4,11 +4,13 @@
 decisions.md **D-40**（confirm 即执行——approve 同步走受控执行 + 恢复验证返回
 终态；提案不自动过期）/ **D-48**（降级形态：未注入受控执行器 → approve 落
 503 + proposal 留 approved 即终，只砍注入面不改契约）/ **D-46**（第八表字段
-= GET 序列化形状）/ D-44/D-45（06 语义——本票只注入替身，未恢复落 failed）。
+= GET 序列化形状）/ D-44/D-45/D-28（issue 06 实装：未恢复 → runbook 显式
+回滚 → 复验 → recovered/escalated，runbook 缺失/rollback=[] 直边 escalated）。
 
-覆盖（对应 issue 04 验收①–⑦）：
+覆盖（对应 issue 04 验收①–⑦ + issue 06 api 级回归）：
 - confirm approve → 注入替身执行器/验证器调用断言（收到的命令清单 =
-  dry_run_json 原文）→ 同步返回终态行（恢复 → recovered / 未恢复 → failed）
+  dry_run_json 原文）→ 同步返回终态行（恢复 → recovered + incident 翻
+  mitigated / 未恢复 → escalated + incident 保持 investigating）
 - confirm reject → proposal 落 rejected + decision/reason/confirmed_at 落库
 - GET 单个 / GET by incident（多次尝试两行都在，按 id 序）
 - 4xx 语义：不存在 404、已终态再 confirm 409、decision 非法 422
@@ -23,6 +25,7 @@ test_investigation_api.py 先例）；执行器/验证器全为测试替身（�
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -34,9 +37,12 @@ from oncall.api.remediation import RemediationDeps
 from oncall.db import Incident, create_tables
 from oncall.db.models import RemediationProposal
 from oncall.ingest.app import create_app
+from oncall.remediation.runbook import load_runbook_library
 from oncall.remediation.service import create_proposal
 
 pytestmark = pytest.mark.inproc_asgi
+
+RUNBOOKS_DIR = Path(__file__).resolve().parents[2] / "remediation" / "runbooks"
 
 # issue 02 定稿的 dry_run_json 形状（execute.py preview 结构，与
 # test_remediation_service.py 同源）
@@ -89,7 +95,13 @@ class StubExecutor:
 
     def execute(self, dry_run_json: dict[str, Any]) -> dict[str, Any]:
         self.calls.append(copy.deepcopy(dry_run_json))
-        return {"executed_steps": len(dry_run_json.get("commands", [])), "output": "ok"}
+        # 形状对齐 issue 05 ControlledExecutor 审计返回（{executed, rejected, ok, output_summary}）
+        return {
+            "executed": [{"step": 1, "action": "mysql.kill_session", "ok": True}],
+            "rejected": [],
+            "ok": True,
+            "output_summary": "stub: allow 1 / reject 0",
+        }
 
 
 class StubVerifier:
@@ -179,8 +191,9 @@ class TestConfirmApprove:
         assert body["confirm_reason"] == "影响面已核对"
         assert body["confirmed_at"] and body["executed_at"] and body["finished_at"]
         assert body["verify_result_json"] == {"recovered": True, "detail": "stub 判定"}
-        # 执行输出摘要落 params_json（执行留痕载体）
-        assert body["params_json"]["execution"] == {"executed_steps": 1, "output": "ok"}
+        # 执行输出摘要落 params_json（执行留痕载体，issue 05 审计形状）
+        assert body["params_json"]["execution"]["ok"] is True
+        assert body["params_json"]["execution"]["executed"][0]["action"] == "mysql.kill_session"
         # 替身调用断言：执行器/验证器收到的命令清单 = dry_run_json 原文（批准对象锁定）
         assert executor.calls == [DRY_RUN]
         assert verifier.calls == [DRY_RUN]
@@ -188,7 +201,8 @@ class TestConfirmApprove:
         row = _reload(engine, pid)
         assert row.status == "recovered" and row.decision == "approve"
 
-    def test_approve_not_recovered_lands_failed(self):
+    def test_approve_not_recovered_without_runbook_escalates(self):
+        """issue 06 语义：未恢复且 runbook 库未注入（无回滚来源）→ 直边 escalated。"""
         client, engine = _make_client(
             RemediationDeps(executor=StubExecutor(), verifier=StubVerifier(recovered=False))
         )
@@ -198,7 +212,48 @@ class TestConfirmApprove:
         resp = client.post(f"/remediations/{pid}/confirm", json={"decision": "approve"})
 
         assert resp.status_code == 200
-        assert resp.json()["status"] == "failed"
+        body = resp.json()
+        assert body["status"] == "escalated"
+        assert body["rollback_status"] == "skipped"
+
+    def test_approve_not_recovered_with_rollback_escalates_after_reverify(self):
+        """issue 06：未恢复 → runbook 显式 rollback 经执行器 → 复验仍失败 → escalated。"""
+        runbooks = load_runbook_library(RUNBOOKS_DIR)
+        client, engine = _make_client(
+            RemediationDeps(
+                executor=StubExecutor(), verifier=StubVerifier(recovered=False), runbooks=runbooks
+            )
+        )
+        incident_id = _seed_incident(engine)
+        pid = _create_proposal(engine, incident_id)
+
+        resp = client.post(f"/remediations/{pid}/confirm", json={"decision": "approve"})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "escalated"
+        assert body["rollback_status"] == "rolled_back"  # 回滚已执行，复验仍失败
+        assert body["params_json"]["rollback"]["ok"] is True  # 回滚审计留痕
+        # D-28：转人工不是丢弃——incident 保持 investigating
+        with Session(engine) as session:
+            incident = session.get(Incident, incident_id)
+            assert incident is not None and incident.status == "investigating"
+
+    def test_approve_recovered_flips_incident_mitigated(self):
+        """issue 06：恢复路径 incident 翻 mitigated（既有枚举流转，D-19/D-46）。"""
+        client, engine = _make_client(
+            RemediationDeps(executor=StubExecutor(), verifier=StubVerifier(recovered=True))
+        )
+        incident_id = _seed_incident(engine)
+        pid = _create_proposal(engine, incident_id)
+
+        resp = client.post(f"/remediations/{pid}/confirm", json={"decision": "approve"})
+
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "recovered"
+        with Session(engine) as session:
+            incident = session.get(Incident, incident_id)
+            assert incident is not None and incident.status == "mitigated"
 
     def test_dry_run_json_immutable_through_full_chain(self):
         client, engine = _make_client(

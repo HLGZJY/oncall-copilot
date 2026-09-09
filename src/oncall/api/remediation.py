@@ -6,7 +6,9 @@ pending→approved→executing→终态返回终态行；提案不自动过期�
 永久可查）/ **D-48**（降级形态：未注入受控执行器/恢复验证器 → approve 落
 「建议已确认，执行能力未配置」503，proposal 留 approved 即终——approved 是
 合法停留态而非中间态遗留；只砍注入面不改契约）/ D-46（第八表字段 = 序列化
-形状）/ D-44（恢复验证判据——本票只注入替身，06 实装）。
+形状）/ D-44/D-45/D-28（issue 06 实装：恢复验证判据 = runbook 显式声明；
+未恢复 → runbook 显式回滚 → 复验 → recovered/escalated，分叉编排收口在
+remediation 层 `run_confirm_chain`，本层只调用）。
 
 安全语义（硬规 3）：确认门是**系统层拦截**（API 层），不是提示词层；批准对象
 = `proposal.dry_run_json`（D-39），api 层不改写、执行器只消费该清单。
@@ -18,6 +20,7 @@ pending→approved→executing→终态返回终态行；提案不自动过期�
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -29,21 +32,24 @@ from sqlalchemy.orm import Session
 from oncall.db.models import RemediationProposal
 from oncall.remediation import service
 from oncall.remediation.executor import RemediationExecutor
-from oncall.remediation.verifier import RecoveryVerifier
+from oncall.remediation.verifier import RecoveryVerifier, run_confirm_chain
 
 __all__ = ["ConfirmRequest", "RemediationDeps", "create_remediation_router"]
 
 
 @dataclass(frozen=True)
 class RemediationDeps:
-    """确认门注入面：受控执行器 + 恢复验证器（issue 05/06 实装，测试替身即注入）。
+    """确认门注入面：受控执行器 + 恢复验证器 + runbook 库（issue 05/06 实装，测试替身即注入）。
 
-    两者任一缺省 None → confirm approve 落 D-48 降级（503 + proposal 留
-    approved 即终）；reject 与 GET 查询不受降级影响（确认与查询能力独立于执行能力）。
+    执行器/验证器任一缺省 None → confirm approve 落 D-48 降级（503 + proposal
+    留 approved 即终）；runbook 库供回滚分叉取 runbook 显式 rollback（D-45，
+    缺失/rollback=[] → 未恢复直边 escalated）；reject 与 GET 查询不受降级影响
+    （确认与查询能力独立于执行能力）。
     """
 
     executor: RemediationExecutor | None = None
     verifier: RecoveryVerifier | None = None
+    runbooks: Mapping[str, Any] | None = None
 
 
 class ConfirmRequest(BaseModel):
@@ -105,14 +111,15 @@ def create_remediation_router(engine: Engine, deps: RemediationDeps) -> APIRoute
                         ),
                     )
                 service.start_execution(session, row)
-                execution = deps.executor.execute(row.dry_run_json)  # 批准对象原文直入
-                row.params_json = {**(row.params_json or {}), "execution": execution}
-                session.commit()
-                verify = deps.verifier.verify(row.dry_run_json)
-                if verify.get("recovered"):
-                    service.mark_recovered(session, row, verify_result_json=verify)
-                else:  # 回滚/转人工分叉归 issue 06；本票未恢复落 failed
-                    service.mark_failed(session, row, verify_result_json=verify)
+                # 同步链编排收口在 remediation 层（issue 06 裁决）：本层只调用，
+                # 一行不重写状态逻辑——执行 → 恢复验证 → 未恢复回滚/转人工分叉
+                run_confirm_chain(
+                    session,
+                    row,
+                    executor=deps.executor,
+                    verifier=deps.verifier,
+                    runbooks=deps.runbooks or {},
+                )
             except service.ProposalStateError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
             return _serialize_proposal(row)

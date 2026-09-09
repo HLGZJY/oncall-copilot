@@ -80,6 +80,8 @@ read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增
 | 干跑预览 / Dry-run Preview | 干跑（第一道闸门）的**产出物**：渲染出的「将执行的命令 + 影响面」，即 `proposal.dry_run_json`——人工在确认门批准的就是这份预览，不是模型的意图描述 | 预演结果、试运行输出 |
 | 命令白名单 / Command Allowlist | 系统层**唯一可执行面**（硬规 3 落地）：动作类型 → 受限命令模板 + 参数白名单正则的静态原子操作表（docker/mysql 两族，D-42）；runbook 的 action 只可引用表内原子操作，命令字符串永不来自 runbook 正文或模型自由文本 | 命令黑名单（本项目明确不用）、可执行命令集 |
 | 恢复判据 / Recovery Criterion | runbook `verification` 字段**显式声明**的恢复判定：`{promql, condition, window_s}`（D-44）——处置作者在无压力时预写的「回到告警未触发稳态」的判据，恢复验证机械断言的对象 | 验证阈值、健康标准、恢复检查 |
+| 回滚编排 / Rollback Orchestration | confirm 同步链的未恢复分叉（D-45/G7，收口在 remediation 层 `run_confirm_chain`）：自动执行 runbook 显式 `rollback`（与 actions 同一受控执行器，过白名单 + 留审计）→ 复验 → recovered 或 escalated（D-28 转人工不是丢弃）；`rollback_status` 三值：`skipped`（rollback=[] 直边）/ `rolled_back`（已执行）/ `blocked`（白名单拒绝未执行） | 逆操作推导（系统不做）、自动重试 |
+| 回滚 / Rollback | runbook frontmatter `rollback` 字段**显式定义**的白名单原子操作序列（D-45）——处置作者预写的失败预案，系统不做逆操作推导 | 撤销操作、反向执行 |
 | 受控执行 / Controlled Execution | 第三道闸门：白名单校验后的命令清单在 demo 容器内确定性执行（subprocess 列表参数、禁 shell、30s 超时），执行阶段**永不回读模型输出**（D-39/D-42） | 自动执行、命令执行 |
 | 推理与执行分离 / Reasoning-Execution Separation | 架构原则（D-39）：模型在 loop 内只做**请求处置的决策**（`execute_action` 干跑产 `dry_run_preview` + `proposal_id` 供其收束），**真实执行批准只存在于确认门/服务层（issue 03/04/05），不经 loop 工具**——loop 内 execute_action 永远只是干跑请求，绝无执行路径 | 让模型直接执行已批准命令 |
 
