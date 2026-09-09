@@ -3,7 +3,7 @@ title: "设计决策清单"
 summary: "已拍板的关键决策及理由；ADR 的三条判据与存放位置"
 source: docs/reference/_sources/项目信息.md + docs/prd.md + 2026-09-05 基调会话
 status: active
-updated: 2026-09-09
+updated: 2026-09-09（M6 评审 D-49–D-57）
 read_when: 动手前想知道"这事儿定过没有"；或要新写 ADR 时
 ---
 
@@ -61,6 +61,15 @@ read_when: 动手前想知道"这事儿定过没有"；或要新写 ADR 时
 | D-46 | M5 处置留痕落点：第八表 | **新增第八表 `remediation_proposals`**（超架构 §4 七表规划显式偏差，随实现票回写架构）：一次处置提案一行（id/incident_id FK/investigation_id FK nullable/runbook_slug/action_id/status/dry_run_json/params_json/decision/confirm_reason/confirmed_at/executed_at/verify_result_json/rollback_status/created_at/finished_at）；report remediation 节读表序列化 | proposal 生命周期跨调查（pending 等确认在调查收尾后），evidence_steps 锚调查步、提案锚 incident——语义不同不混表；investigations 扩列推会话级冻结面（D-31）；evidence_steps 冻结列不动（D-25）；第八表显式偏差走评审 + 回写架构 §4（M4 G2/D-31 先例） | 已定（2026-09-09，M5 评审 G8） |
 | D-47 | M5 处置剧本选型 | **2 剧本 = `cpu-spike` + `slow-sql`**（处置动作 = chaos cleanup.sh 语义：docker 资源写 + mysql KILL 会话写，覆盖两类写面）；false-positive-flap 是误报剧本不处置、protocol-mismatch 处置动作复杂且恢复判定跨版本回滚成本高 | 恢复可机械判定是「恢复验证可机械断言」验收的前提（cpu-spike P95 / slow-sql 连接池回落）；两类写面让命令白名单覆盖 docker + mysql 两族（通用性叙事）；与 M2/M3/M4 剧本复用最多（slow-sql 三 M 复用） | 已定（2026-09-09，M5 评审 G9） |
 | D-48 | M5 降级形态（roadmap 裁剪②） | **接受为可裁剪达成路径，不作为默认范围**：默认范围含受控执行；裁剪达成 = 不注入受控执行器（confirm 端点落「建议已确认，执行能力未配置」503/说明 + proposal 留 approved 即终）——只砍注入面，不改契约 | roadmap 裁剪②是时间不够的兜底叙事——设计须使降级形态可裁剪达成（票面要求）但默认不主动砍（PRD §7-M5 验收含「自动处置恢复」）；「干跑+建议」降级 = 承认系统仍给出可审计的处置建议而把执行留给人工 | 已定（2026-09-09，M5 评审 G10） |
+| D-49 | M6 闭环报告落库形态 | **读库拼装不落报告表**：报告 = 出口处对 investigations/evidence_steps/hypotheses/remediation_proposals/kb_chunks 的确定性序列化；`kb_chunks.source_meta_json` 锚定拼装来源行 id 供回溯；不扩 investigations 冻结面（D-31） | 报告数据 100% 已在各表，落报告表 = 可漂移的第二副本（M0 双权威教训）；D-35「读库序列化不倒改」哲学延续 | 已定（2026-09-09，M6 评审 G1） |
+| D-50 | M6 改进建议节生成方式 | **LLM 生成、双门槛门控**：env 开关缺省关（测试/CI 走占位文案）；真实调用是 **key 门槛票**（单独拍板）；mock 契约（输入证据链摘要 → 结构化建议）先冻结，真实调用是可后挂的注换实现 | 改进建议无确定性数据源，硬拼模板是伪内容（无源不虚构）；mock-only 纪律不破；建议节显式标注「AI 生成建议」非事实陈述 | 已定（2026-09-09，M6 评审 G2） |
+| D-51 | M6 embedding 模型选型 | **本地 `BAAI/bge-small-zh-v1.5`**（sentence-transformers 加载，≈100MB，CPU 可跑）；新增依赖走显式评审（C2 面）；云 API 违背零 key 纪律不用；BGE-M3 留升级位（embedder 可注换） | 技术栈地图 L3 层 BGE 系同族轻量档，本地零 key、dev 机无压力；场景为短文本章节块检索，small 档够用（R2 模型卡） | 已定（2026-09-09，M6 评审 G3） |
+| D-52 | M6 向量库选型 | **Chroma persistent local**（技术栈地图二选一的本机档）；pgvector 留「切 MySQL 时平移」注记；向量索引不参与调查事务，可重建 | 嵌入式零服务与「SQLite 起步」同哲学（R1）；pgvector 需 Postgres 与 dev 栈割裂（D-30 单库理由在此反号无代价） | 已定（2026-09-09，M6 评审 G4） |
+| D-53 | M6 报告切块粒度 | **章节切块**：opening_card 摘要 / 时间线 / 根因 / 处置 / 建议 五类 section，各 1–2 块；块带 incident_id/section/seq 元数据，召回可按 section 过滤 | 报告结构即切分边界零 NLP 依赖；整报告块 token 浪费、滑窗切切断语义；结构化分块优于朴素滑窗（R3） | 已定（2026-09-09，M6 评审 G5） |
+| D-54 | M6 召回触发时机 | **混合**：调查开局确定性召回一次（与 collect_context D-16 同构的前置组装，**不是 Agent 步**、不占 15 步预算）+ query_kb 保持 Planner 自主深查（硬规 1）；kb 参考节点语义永远是「参考」非事实 | PRD「首步即引用」要求召回不能赌 Planner 第一步恰好调工具（LLM 行为 flaky）；确定性前置 mock 可断言可录屏；「纯自动当事实」违反 D-08；M2 规则通道先行同款取舍方向 | 已定（2026-09-09，M6 评审 G6） |
+| D-55 | M6 存储权威划分与第九表 | **SQLite `kb_chunks` 第九表为权威**（超架构 §4 八表规划显式偏差，随票回写架构），Chroma 只存向量索引可全量重建；块字段：`id/incident_id(FK)/investigation_id(FK,nullable)/section/seq/text/source_meta_json/hit_count/created_at/superseded_at` | 「可回溯禁虚构」要文本权威在 SQL 侧（可审计可 join）；Chroma 是索引组件非权威库（R1）；第九表走 D-31/D-46 同款评审+回写通道 | 已定（2026-09-09，M6 评审 G7） |
+| D-56 | M6 入库门槛与触发 | **门槛 = incident `mitigated`（恢复验证实证）；触发 = confirm 同步链收尾后同步触发**（失败落日志重试不阻塞处置出口）；未实证（investigating/escalated/failed）永不入库；escalated 案例留 M7 人工标注通道 | 知识污染第一道防线把守在入库口（R5：LLM08 向量与嵌入弱点）；同步触发免后台任务复杂度 | 已定（2026-09-09，M6 评审 G8） |
+| D-57 | M6 缓存重复判定边界 | **指纹精确命中（D-14 含桶口径）+ 源事件 mitigated → 复用整报告关联出口（`reused_from`）不重查**；复用不更新 hit_count（M7 口径分离）；指纹命中但源非 mitigated → 正常开调查；指纹未命中但向量相似 → 只作参考证据 | 缓存省一次调查（步数/成本/时延）整报告收益最大；0 漏报纪律下复用前提是既往结论已实证（保守方向同 D-14）；hit_count 只计真实向量召回，保 M7 指标纯净 | 已定（2026-09-09，M6 评审 G9） |
 
 
 ## 待定（进入对应里程碑前必须 grill 敲定）

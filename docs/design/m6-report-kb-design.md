@@ -13,7 +13,9 @@ read_when: 评审 M6 方案时；进入 M6 开发前；被问「RAG 在 Agent �
 
 `draft`（草案，讨论中）→ `reviewed`（评审通过，可拆票）→ `implemented`（已落地，验收回填）→ `superseded`（被后续设计取代，注明替代文档链接）
 
-- **当前状态**：`draft`（2026-09-09 草案完成，G1–G9 待用户评审拍板；定案后登记 `decisions.md` D-49+，再建 `.scratch/m6-report-kb/` tracker）
+- **当前状态**：`reviewed`（2026-09-09 G1–G9 评审定案——用户逐条拍板，全部采纳推荐默认解；定案已登记 `decisions.md` D-49–D-57，新术语已入 `CONTEXT.md`；tracker 已建 `.scratch/m6-report-kb/`）
+  - 上一状态 `draft`（2026-09-09 草案完成，提交 `ff99659`）
+- **评审人 / 评审日期**：用户逐条拍板（G1–G9 全部采纳推荐默认解），2026-09-09；评审依据由 AI 检索官方标准提供（R1–R5，含 URL 与取用日期 2026-09-09），用户保留推翻权（推翻须回退 `draft` 并重开对应 issue）
 - **设计期口径**：本票零写码、零建表、零真实调用。报告拼装是确定性读库行为（mock 即可测）；embedding 真实调用与「复现同一故障第二次首步引用历史案例」真实 e2e 需**本地 embedding 模型 + 活 demo 栈**（环境门槛，非 key 门槛——改进建议 LLM 润色是唯一可能涉 key 的面，见 G2）；设计期一律 mock。
 
 ## 目标
@@ -139,7 +141,7 @@ M5 恢复验证通过 → incident 翻 mitigated（D-40 链路）
 
 ## 开放设计点（评审 grill）
 
-> G1–G9 待用户评审拍板（定案后登记 `decisions.md` D-49+）。外部标准来源见节末「评审依据」R1–R5（URL + 取用日期 2026-09-09），AI 检索提供，用户保留推翻权（推翻须回退 `draft`）。
+> G1–G9 已于 2026-09-09 **评审定案**：用户逐条拍板全部采纳推荐默认解，登记 `decisions.md` **D-49–D-57**（每条 D 的「理由」栏为该 G 行核心理由的决策形态，ADR 三判据逐条评估——无全中项，均留快速索引层不升级 ADR）。外部标准来源见节末「评审依据」R1–R5（URL + 取用日期 2026-09-09）。
 
 | # | 开放点 | 推荐默认解 | 理由 | 依据 |
 |---|---|---|---|---|
@@ -185,10 +187,10 @@ M5 恢复验证通过 → incident 翻 mitigated（D-40 链路）
 4. **PRD 验收「录屏亮点」依赖 T7 环境**：活栈两遍注入的时延（每遍 ≈2–3min）与 embedding 模型首载耗时需预留；若环境不可用，mock 侧断言已覆盖逻辑正确性，录屏亮点降级为「mock 演示 + 实测数据回填」如实注记（不虚构）。
 5. **缓存复用与评测混淆**：M7 评测台跑同剧本时会命中缓存复用出口、跳过真实调查，污染指标矩阵——评测入口须带 `skip_cache` 旁路（T4 预留参数，M7 票面注记）。
 
-## 评审后动作（待执行，评审定案后回填）
+## 评审后动作（2026-09-09 已执行完毕）
 
-- [ ] 登记定案决策至 `docs/design/decisions.md`（D-49+，含每条 G 的理由形态与 ADR 三判据评估）
-- [x] 新术语入 `CONTEXT.md`（拟新增三术语已按派工 prompt「先入表」纪律落 Agent 架构节：**知识块 / KB Chunk**、**闭环报告 / Closed-Loop Report**、**开局召回 / Opening Recall**——评审若改措辞同步修订）
+- [x] 登记定案决策至 `docs/design/decisions.md`（D-49–D-57，每条 G 对应一行，ADR 三判据评估见 decisions 表）
+- [x] 新术语入 `CONTEXT.md`（Agent 架构节：**知识块 / KB Chunk**、**闭环报告 / Closed-Loop Report**、**开局召回 / Opening Recall**）
 - [x] 更新 `docs/README.md` 索引行（随草案先行，见本次提交）
-- [ ] 建 `.scratch/m6-report-kb/` tracker（spec.md + issues/01–07，与 T1–T7 对应；T7 标环境门槛注记）
+- [x] 建 `.scratch/m6-report-kb/` tracker（spec.md + issues/01–07，与 T1–T7 对应；T7 标环境门槛注记）
 - [ ] 架构 §4 第九表 + §5 时序 M6 落点回写（随 T1 实现票）
