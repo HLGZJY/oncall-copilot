@@ -103,7 +103,7 @@ def investigation_loop(session: InvestigationSession) -> InvestigationResult:
 
 v1 单循环；预留两个演进点但不实现：① evaluator 分离（M7 评测台里的 LLM-as-judge 已是轻量版）；② 并行取证（只读工具可 parallel tool call，写操作永不并行）。
 
-## 4. 数据模型（SQLite 起步，八张核心表）
+## 4. 数据模型（SQLite 起步，九张核心表）
 
 ```
 scenarios      剧本: id, name, fault_type, inject_script, expected_root_cause, expected_action
@@ -137,6 +137,14 @@ remediation_proposals 处置提案: id, incident_id(FK, 一对多不加唯一), 
                      ← M5 增补第八表（2026-09-09，G8/D-46；超六表规划的显式偏差已评审；
                      proposal 生命周期跨调查——pending 等确认发生在调查收尾后，
                      锚 incident 不锚调查步，故不混入 evidence_steps/investigations）
+kb_chunks      知识块: id, incident_id(FK, 一对多), investigation_id(FK, nullable——
+                     缓存复用路径无新调查), section(opening_card/timeline/root_cause/
+                     remediation/suggestions), seq, text, source_meta_json(拼装来源
+                     锚点——可回溯禁虚构), hit_count(只计真实向量召回, D-57),
+                     created_at, superseded_at(覆盖淘汰标记——召回不再命中)
+                     ← M6 增补第九表（2026-09-09，G7/D-55；超八表规划的显式偏差已评审；
+                     文本权威在本表（可 SQL 审计、可 join incidents 回溯），Chroma 只存
+                     可重建的向量索引；入库门槛 = incident mitigated 实证（D-56））
 ```
 
 设计约束：`evidence_steps.output_json` 存原始输出（可回溯），`output_summary` 存进上下文的摘要——**两个都要有**（Anthropic："不能只存摘要"）。组件不可变、构造时校验；`InvestigationSession` 是唯一可变状态对象（OpenHands 原则），序列化即断点恢复工件。
@@ -149,6 +157,9 @@ remediation_proposals 处置提案: id, incident_id(FK, 一对多不加唯一), 
   → [查指标 → 摘要入窗 → Verifier → 查日志 → ... 假设证实] ≤15 步
   → 根因报告 + 证据链(M4) → 匹配 SOP → 干跑 → 人工确认(M5)
   → 执行 → 回查指标 → 恢复? → 闭环报告 → 向量化入库(M6)
+     [M6: 恢复实证 → 闭环报告读库拼装 → 章节切块 → 向量化入库（第九表 kb_chunks
+      权威 + Chroma 索引）；新调查开局确定性召回（指纹缓存复用 / 向量参考证据）；
+      query_kb = 真实 RAG；kb 证据语义为「参考」，不可独立证实假设]
 评测台(M7) 独立入口：scenario → 注入 → 等 alert → 全自动跑 → 指标矩阵
 ```
 

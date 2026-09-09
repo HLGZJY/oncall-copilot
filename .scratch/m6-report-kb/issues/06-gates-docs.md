@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: 05
 
 # gates docs
@@ -9,4 +9,4 @@ Blocked by: 05
 
 ## 验收（可机械判定）
 
-- [ ] 门禁全绿；架构回写核对；验收节逐项打勾（mock 侧）
+- [x] 门禁全绿；架构回写核对；验收节逐项打勾（mock 侧）

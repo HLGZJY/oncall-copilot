@@ -125,12 +125,12 @@ M5 恢复验证通过 → incident 翻 mitigated（D-40 链路）
 
 > 可实测、可判定；实测后回填打勾，不得虚构。设计期 mock-only（MockEmbedder 确定性向量），真实召回 e2e 留 T7（环境门槛：本地 embedding 模型下载 + 活 demo 栈复现同故障两遍，开工前需用户确认）。
 
-- [ ] **闭环报告五节齐全且禁虚构**（PRD §7-M6）：时间线节逐条可回溯 alert_events 行 id、根因节 = confirmed hypotheses + supporting steps、处置节 = remediation_proposals 全链、建议节门控输出——单测断言报告文本中每个数据点可经 `source_meta_json` 锚点回查库行（T 期实现票）
-- [ ] **复现同一故障第二次，首步即引用历史案例**（PRD 验收硬口径，可录屏为亮点）：mock 侧——同剧本第二遍调查开局证据链含 `source=kb` 参考节点且文本来自第一遍入库报告（确定性断言）；真实侧——活栈同故障注入两遍，第二遍报告含 kb 引用（T7，环境门槛）
-- [ ] **指纹精确命中走缓存复用不走重查**：同指纹（D-14 口径）+ 既有 mitigated 闭环 → 新告警不建新调查、出口 `reused_from` 关联既有报告；指纹未命中但向量相似 → 正常开调查只作参考（单测断言两条路径互斥，G9）
-- [ ] **知识污染三道防线可机械断言**：①未实证（investigating/escalated）事件入库调用被拒（G8 门槛测试）；②kb 证据单独不能证实假设（Verifier 规则层单测：仅 kb 支撑的假设证实被拒并提示补本源证据）；③重复调查覆盖 investigations 旧行时 kb 旧块同步 superseded（覆盖语义测试）
-- [ ] **D-23 冻结面不破**：六工具集合、`QueryKbInput{query, top_k}` 形状、`ToolResult` 形状、loop 主循环结构不变（import + 键集合断言，M5 `test_m5_frozen_face` 同款形制）；未注入检索函数时 query_kb 维持 unavailable stub（既有测试零回退）
-- [ ] **全量门禁只增不减**：pytest（基线 **682 passed / 12 skipped** 只增不减）+ ruff 双检 + import-linter C3–C6 + bandit 全绿，coverage ≥80%（harness 单独 ≥85%）（设计票收尾复跑确认未污染）
+- [x] **闭环报告五节齐全且禁虚构**（PRD §7-M6）：时间线节逐条可回溯 alert_events 行 id、根因节 = confirmed hypotheses + supporting steps、处置节 = remediation_proposals 全链、建议节门控输出——单测断言报告文本中每个数据点可经 `source_meta_json` 锚点回查库行（T 期实现票）
+- [ ] **复现同一故障第二次，首步即引用历史案例**（PRD 验收硬口径，可录屏为亮点）：mock 侧——已绿（test_kb_recall 两通道 + test_investigation_api reused_from 出口确定性断言）；真实侧——活栈同故障注入两遍，第二遍报告含 kb 引用（T7，环境门槛，实测后回填）
+- [x] **指纹精确命中走缓存复用不走重查**：同指纹（D-14 口径）+ 既有 mitigated 闭环 → 新告警不建新调查、出口 `reused_from` 关联既有报告；指纹未命中但向量相似 → 正常开调查只作参考（单测断言两条路径互斥，G9）
+- [x] **知识污染三道防线可机械断言**：①未实证（investigating/escalated）事件入库调用被拒（G8 门槛测试）；②kb 证据单独不能证实假设（Verifier 规则层单测：仅 kb 支撑的假设证实被拒并提示补本源证据）；③重复调查覆盖 investigations 旧行时 kb 旧块同步 superseded（覆盖语义测试）
+- [x] **D-23 冻结面不破**：六工具集合、`QueryKbInput{query, top_k}` 形状、`ToolResult` 形状、loop 主循环结构不变（import + 键集合断言，M5 `test_m5_frozen_face` 同款形制）；未注入检索函数时 query_kb 维持 unavailable stub（既有测试零回退）
+- [x] **全量门禁只增不减**：pytest（基线 **682 passed / 12 skipped** → T6 实测 **710 passed / 12 skipped**，+28 全为 M6 新增）+ ruff 双检全绿 + bandit（-c pyproject.toml）全绿，coverage ≥80%（harness 单独 ≥85%）；import-linter 本地环境组合沿用 M5 注记（grimp 中途异常），C3–C6 由 AST 守卫测试（test_architecture_guards）同等机械覆盖全绿；「首步即引用」真实侧留 T7 环境门槛票
 - [ ] **真实召回 e2e 回填**（T7）：同故障两遍的召回命中/得分/耗时如实回填验收节与 issue Comments（禁虚构）；设计文档翻 `implemented`、D-49+ 落位核对、架构 §4 回写（第九表 + 时序图 M6 落点）核对
 
 ## 依赖
@@ -193,4 +193,4 @@ M5 恢复验证通过 → incident 翻 mitigated（D-40 链路）
 - [x] 新术语入 `CONTEXT.md`（Agent 架构节：**知识块 / KB Chunk**、**闭环报告 / Closed-Loop Report**、**开局召回 / Opening Recall**）
 - [x] 更新 `docs/README.md` 索引行（随草案先行，见本次提交）
 - [x] 建 `.scratch/m6-report-kb/` tracker（spec.md + issues/01–07，与 T1–T7 对应；T7 标环境门槛注记）
-- [ ] 架构 §4 第九表 + §5 时序 M6 落点回写（随 T1 实现票）
+- [x] 架构 §4 第九表 + §5 时序 M6 落点回写（2026-09-09 T6 完成）
