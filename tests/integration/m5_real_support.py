@@ -120,6 +120,8 @@ def run_bash(script: Path, *, env_extra: Mapping[str, str] | None = None) -> str
     proc = subprocess.run(
         [_git_bash(), script.as_posix()],
         capture_output=True,
+        encoding="utf-8",
+        errors="replace",
         text=True,
         env=env,
         timeout=120,
@@ -134,6 +136,8 @@ def docker_inspect_cpuset(container: str) -> str:
     proc = subprocess.run(
         ["docker", "inspect", "-f", "{{.HostConfig.CpusetCpus}}", container],
         capture_output=True,
+        encoding="utf-8",
+        errors="replace",
         text=True,
         timeout=30,
         check=False,
@@ -146,6 +150,8 @@ def docker_info_ncpu() -> int:
     proc = subprocess.run(
         ["docker", "info", "-f", "{{.NCPU}}"],
         capture_output=True,
+        encoding="utf-8",
+        errors="replace",
         text=True,
         timeout=30,
         check=False,
@@ -168,6 +174,8 @@ def mysql_lock_session_id(container: str) -> str:
     proc = subprocess.run(
         ["docker", "exec", container, "mysql", "-uroot", "-poncall", "-N", "-e", sql],
         capture_output=True,
+        encoding="utf-8",
+        errors="replace",
         text=True,
         timeout=30,
         check=False,
@@ -183,8 +191,19 @@ def curl_json(method: str, url: str, payload: Mapping[str, Any] | None = None) -
     cmd = ["curl", "-sS", "-X", method, url]
     if payload is not None:
         cmd += ["-H", "Content-Type: application/json", "-d", json.dumps(payload)]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=500, check=False)
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        text=True,
+        timeout=500,
+        check=False,
+    )
     assert proc.returncode == 0, proc.stderr
+    assert proc.stdout and proc.stdout.strip(), (
+        f"curl 无响应体（HTTP 服务未起/编码问题）：stderr={proc.stderr[:200]}"
+    )
     return json.loads(proc.stdout)
 
 
