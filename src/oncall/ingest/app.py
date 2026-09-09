@@ -24,6 +24,7 @@ from oncall.api.investigation import (
     InvestigationDeps,
     create_investigation_router,
 )
+from oncall.api.remediation import RemediationDeps, create_remediation_router
 from oncall.api.routes import create_router
 from oncall.context.config import ContextConfig
 from oncall.db import create_tables
@@ -48,6 +49,7 @@ def create_app(  # noqa: PLR0913, PLR0917 — 注入面持续增长（M2 classif
     context_client: PromClient | None = None,
     classify_runtime: ClassifyRuntime | None = None,
     investigation: InvestigationDeps | None = None,
+    remediation: RemediationDeps | None = None,
 ) -> FastAPI:
     """应用工厂：测试注入内存库引擎与上下文替身；进程启动走环境变量配置。
 
@@ -111,6 +113,12 @@ def create_app(  # noqa: PLR0913, PLR0917 — 注入面持续增长（M2 classif
     if investigation.opening_builder is None:
         investigation = _with_default_opening_builder(investigation, context_config, context_client)
     app.include_router(create_investigation_router(engine, investigation))
+
+    # 确认门路由（M5 issue 04 / T4 / D-40/D-48）：执行器/验证器缺省 None →
+    # confirm approve 落 503 降级（proposal 留 approved 即终）；GET 查询照常可用
+    if remediation is None:
+        remediation = RemediationDeps()
+    app.include_router(create_remediation_router(engine, remediation))
 
     return app
 
