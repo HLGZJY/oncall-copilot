@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: 04
 
 # pollution guards
@@ -9,4 +9,4 @@ Blocked by: 04
 
 ## 验收（可机械判定）
 
-- [ ] pytest 绿：三道防线各独立断言；污染场景 e2e（错误结论不回流：未实证调查的报告不出现在召回结果）
+- [x] pytest 绿：三道防线各独立断言；污染场景 e2e（错误结论不回流：未实证调查的报告不出现在召回结果）

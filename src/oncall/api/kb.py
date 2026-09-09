@@ -55,9 +55,7 @@ def create_kb_router(engine: Engine, pipeline: KnowledgePipeline | None) -> APIR
             )
         with Session(engine) as session:
             if session.get(Incident, incident_id) is None:
-                raise HTTPException(
-                    status_code=404, detail=f"incidents 不存在: id={incident_id}"
-                )
+                raise HTTPException(status_code=404, detail=f"incidents 不存在: id={incident_id}")
             try:
                 count = pipeline.ingest_incident(incident_id, session)
                 session.commit()
@@ -70,9 +68,7 @@ def create_kb_router(engine: Engine, pipeline: KnowledgePipeline | None) -> APIR
         """事件知识条目：活跃块（superseded 不出）；未入库 → 404。"""
         with Session(engine) as session:
             if session.get(Incident, incident_id) is None:
-                raise HTTPException(
-                    status_code=404, detail=f"incidents 不存在: id={incident_id}"
-                )
+                raise HTTPException(status_code=404, detail=f"incidents 不存在: id={incident_id}")
             rows = list(
                 session.scalars(
                     select(KbChunkRow)
@@ -87,6 +83,10 @@ def create_kb_router(engine: Engine, pipeline: KnowledgePipeline | None) -> APIR
             raise HTTPException(
                 status_code=404, detail=f"事件未入库（未实证或从未闭环）: id={incident_id}"
             )
-        return {"incident_id": incident_id, "count": len(rows), "chunks": [_serialize_chunk(r) for r in rows]}
+        return {
+            "incident_id": incident_id,
+            "count": len(rows),
+            "chunks": [_serialize_chunk(r) for r in rows],
+        }
 
     return router

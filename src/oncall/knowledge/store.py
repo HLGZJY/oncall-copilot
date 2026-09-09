@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 from typing import Any, Protocol, runtime_checkable
 
-__all__ = ["VectorStore", "VectorStoreUnavailable", "InMemoryVectorStore", "ChromaVectorStore"]
+__all__ = ["ChromaVectorStore", "InMemoryVectorStore", "VectorStore", "VectorStoreUnavailable"]
 
 
 class VectorStoreUnavailable(RuntimeError):
@@ -23,7 +23,9 @@ class VectorStoreUnavailable(RuntimeError):
 class VectorStore(Protocol):
     """向量索引接缝：upsert / 按 incident 覆盖删除 / top_k 相似检索。"""
 
-    def upsert(self, ids: list[str], vectors: list[list[float]], metadatas: list[dict[str, Any]]) -> None: ...
+    def upsert(
+        self, ids: list[str], vectors: list[list[float]], metadatas: list[dict[str, Any]]
+    ) -> None: ...
 
     def delete_incident(self, incident_id: int) -> None: ...
 
@@ -43,7 +45,9 @@ class InMemoryVectorStore:
         self._vectors: dict[str, list[float]] = {}
         self._metadatas: dict[str, dict[str, Any]] = {}
 
-    def upsert(self, ids: list[str], vectors: list[list[float]], metadatas: list[dict[str, Any]]) -> None:
+    def upsert(
+        self, ids: list[str], vectors: list[list[float]], metadatas: list[dict[str, Any]]
+    ) -> None:
         for i, vec, meta in zip(ids, vectors, metadatas, strict=True):
             self._vectors[i] = list(vec)
             self._metadatas[i] = dict(meta)
@@ -55,9 +59,7 @@ class InMemoryVectorStore:
             self._metadatas.pop(i, None)
 
     def query(self, vector: list[float], top_k: int) -> list[dict[str, Any]]:
-        scored = (
-            (i, _cosine(vector, vec)) for i, vec in self._vectors.items()
-        )
+        scored = ((i, _cosine(vector, vec)) for i, vec in self._vectors.items())
         ranked = sorted(scored, key=lambda pair: pair[1], reverse=True)[:top_k]
         return [
             {"id": i, "score": round(score, 6), **self._metadatas[i]}
@@ -71,7 +73,8 @@ class ChromaVectorStore:
 
     def __init__(self, path: str, collection: str = "kb_chunks") -> None:
         try:
-            import chromadb  # noqa: PLC0415（lazy import：未安装不炸模块 import）
+            # lazy import：未安装不炸模块 import（unavailable 语义，D-16）
+            import chromadb  # noqa: PLC0415
         except ImportError as exc:  # pragma: no cover - 依赖冒烟票负责安装
             raise VectorStoreUnavailable(
                 "chromadb 未安装：向量索引回落 InMemoryVectorStore（权威在 kb_chunks 表）"
@@ -79,7 +82,9 @@ class ChromaVectorStore:
         self._client = chromadb.PersistentClient(path=path)
         self._collection = self._client.get_or_create_collection(collection)
 
-    def upsert(self, ids: list[str], vectors: list[list[float]], metadatas: list[dict[str, Any]]) -> None:
+    def upsert(
+        self, ids: list[str], vectors: list[list[float]], metadatas: list[dict[str, Any]]
+    ) -> None:
         self._collection.upsert(ids=ids, embeddings=vectors, metadatas=metadatas)
 
     def delete_incident(self, incident_id: int) -> None:

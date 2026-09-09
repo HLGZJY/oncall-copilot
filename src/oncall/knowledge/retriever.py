@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from oncall.db.models import KbChunk
+from oncall.harness.tools.registry import ToolTimeoutError
 from oncall.harness.tools.schemas import ToolResult, ToolStatus
 
 if TYPE_CHECKING:
@@ -66,7 +67,7 @@ class KbRetriever:
         self._min_score = min_score
 
     def search(self, query: str, top_k: int, *, session: Session | None = None) -> list[KbHit]:
-        """检索 active 块（superseded 已在索引清除，此处再核权威表双保险）；命中 hit_count++（D-57：只计真实向量召回）。"""
+        """检索 active 块（superseded 索引清除 + 权威表双保险）；hit_count++（D-57 真实召回计）。"""
         own_session = session is None
         db = session or Session(self._engine)
         try:
@@ -109,8 +110,6 @@ def build_query_kb_handler(
         return None
 
     def handler(args: BaseModel, *, timeout_seconds: float) -> ToolResult:
-        from oncall.harness.tools.registry import ToolTimeoutError  # noqa: PLC0415（超时口径对齐）
-
         try:
             query = args.query
             top_k = args.top_k

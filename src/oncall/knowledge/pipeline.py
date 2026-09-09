@@ -13,11 +13,13 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session as OrmSession
 
-from oncall.db.models import Incident
+from oncall.db.models import Incident, Investigation
 from oncall.db.models import KbChunk as KbChunkRow
 from oncall.knowledge.chunking import chunk_report
 from oncall.knowledge.report import build_closed_loop_report
+from oncall.knowledge.retriever import KbRetriever
 
 if TYPE_CHECKING:
     from sqlalchemy import Engine
@@ -40,8 +42,6 @@ class KnowledgePipeline:
     """
 
     def __init__(self, engine: Engine | None, embedder: Embedder, store: VectorStore) -> None:
-        from oncall.knowledge.retriever import KbRetriever
-
         self._engine = engine
         self._embedder = embedder
         self._store = store
@@ -56,9 +56,8 @@ class KnowledgePipeline:
         `session` 为调用方事务（步进即写先例 D-33 同款：落库写失败不静默吞）。
         调查行取最近一次（D-31 1:1）；investigation_id 缺省可空（缓存复用路径）。
         """
-        from sqlalchemy.orm import Session as OrmSession
-
-        assert isinstance(session, OrmSession)
+        if not isinstance(session, OrmSession):
+            raise TypeError("ingest_incident 需传入调用方 Session（D-33 步进即写事务面）")
         incident_row = session.get(Incident, incident_id)
         if incident_row is None:
             raise KeyError(f"incidents 不存在: id={incident_id}")
@@ -68,11 +67,7 @@ class KnowledgePipeline:
                 "只有 mitigated（恢复验证实证）的闭环报告才入库"
             )
         sections = build_closed_loop_report(session, incident_id)
-        from oncall.db.models import Investigation
-
-        inv = session.scalar(
-            select(Investigation).where(Investigation.incident_id == incident_id)
-        )
+        inv = session.scalar(select(Investigation).where(Investigation.incident_id == incident_id))
         chunks = chunk_report(
             sections,
             incident_id=incident_id,
@@ -89,17 +84,14 @@ class KnowledgePipeline:
         self._store.upsert(
             ids=[str(r.id) for r in rows],
             vectors=vectors,
-            metadatas=[
-                {"incident_id": c["incident_id"], "section": c["section"]} for c in chunks
-            ],
+            metadatas=[{"incident_id": c["incident_id"], "section": c["section"]} for c in chunks],
         )
         return len(rows)
 
     def supersede_incident(self, incident_id: int, session: Any) -> None:
         """覆盖淘汰（D-31 联动）：该 incident 旧块全部打 superseded_at + 索引清除。"""
-        from sqlalchemy.orm import Session as OrmSession
-
-        assert isinstance(session, OrmSession)
+        if not isinstance(session, OrmSession):
+            raise TypeError("supersede_incident 需传入调用方 Session（D-33 事务面）")
         old_rows = list(
             session.scalars(
                 select(KbChunkRow).where(

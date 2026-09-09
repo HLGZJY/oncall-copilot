@@ -150,13 +150,14 @@ class TestColumnContract:
         assert "output_summary" in cols
 
     def test_table_scope_is_six_tables(self, engine):
-        """M2 两表 + M4 三表 + M5 第八表；scenarios/eval_runs 不越界。"""
+        """M2 两表 + M4 三表 + M5 第八表 + M6 第九表（D-55）；scenarios/eval_runs 不越界。"""
         assert sorted(inspect(engine).get_table_names()) == [
             "alert_events",
             "evidence_steps",
             "hypotheses",
             "incidents",
             "investigations",
+            "kb_chunks",
             "remediation_proposals",
         ]
 
@@ -172,6 +173,7 @@ class TestCreateAllIdempotent:
             "hypotheses",
             "incidents",
             "investigations",
+            "kb_chunks",
             "remediation_proposals",
         ]
         cols = {c["name"] for c in inspect(engine).get_columns("evidence_steps")}

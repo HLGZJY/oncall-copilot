@@ -271,8 +271,7 @@ class KbChunk(Base):
     __table_args__ = (
         # D-53 五类 section 冻结；CHECK 落 DB 层（照 ck_incidents_status 先例）
         CheckConstraint(
-            "section IN ('opening_card', 'timeline', 'root_cause', 'remediation', "
-            "'suggestions')",
+            "section IN ('opening_card', 'timeline', 'root_cause', 'remediation', 'suggestions')",
             name="ck_kb_chunks_section",
         ),
     )

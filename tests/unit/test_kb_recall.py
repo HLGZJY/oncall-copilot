@@ -7,11 +7,14 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from oncall.db import create_tables
 from oncall.db.models import AlertEvent, Incident, Investigation, KbChunk
-from oncall.harness.tools.registry import ToolRegistry
+from oncall.harness.permission import PermissionLevel
+from oncall.harness.tools.registry import TOOL_NAMES, ToolRegistry, ToolSpec
 from oncall.harness.tools.schemas import QueryKbInput, ToolStatus
+from oncall.harness.tools.schemas import ToolResult as TR
 from oncall.knowledge.embedder import MockEmbedder
 from oncall.knowledge.pipeline import KnowledgePipeline
 from oncall.knowledge.recall import opening_recall
@@ -24,12 +27,8 @@ FIRED = datetime(2026, 9, 6, 6, 28, 21, tzinfo=UTC)
 @pytest.fixture()
 def kb_engine():
     """共享内存库（StaticPool：跨连接同库——retriever 内部独立 Session 可见种子数据）。"""
-    from sqlalchemy.pool import StaticPool
-
     engine = create_engine(
-        "sqlite://",
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
     )
 
     @event.listens_for(engine, "connect")
@@ -90,11 +89,19 @@ def test_query_kb_handler_injected_returns_kb_hits(db: Session, kb_engine) -> No
     pipeline.ingest_incident(incident_id, db)
     handler = build_query_kb_handler(pipeline.retriever())
     assert handler is not None
-    result = handler(QueryKbInput(query="DemoApiGwHighLatency@api-gw-1", top_k=3), timeout_seconds=5.0)
+    result = handler(
+        QueryKbInput(query="DemoApiGwHighLatency@api-gw-1", top_k=3), timeout_seconds=5.0
+    )
     assert result.status is ToolStatus.OK
     assert result.meta["source"] == "kb"
     assert result.data["kb_hits"][0]["source"] == "kb"
-    assert result.data["kb_hits"][0]["section"] in {"opening_card", "timeline", "root_cause", "remediation", "suggestions"}
+    assert result.data["kb_hits"][0]["section"] in {
+        "opening_card",
+        "timeline",
+        "root_cause",
+        "remediation",
+        "suggestions",
+    }
 
 
 def test_query_kb_handler_empty_and_not_injected() -> None:
@@ -108,12 +115,13 @@ def test_query_kb_handler_empty_and_not_injected() -> None:
 
 def test_query_kb_via_registry_frozen_face(db: Session, kb_engine) -> None:
     """经 registry 执行：D-23 冻结面（入参 schema / ToolResult 形状 / 六工具集合）不破。"""
-    from oncall.harness.permission import PermissionLevel
-    from oncall.harness.tools.registry import TOOL_NAMES, ToolSpec
-    from oncall.harness.tools.schemas import ToolResult as TR
-
     assert set(TOOL_NAMES) == {
-        "query_metrics", "search_logs", "detect_anomaly", "get_topology", "query_kb", "execute_action",
+        "query_metrics",
+        "search_logs",
+        "detect_anomaly",
+        "get_topology",
+        "query_kb",
+        "execute_action",
     }
     assert set(QueryKbInput.model_fields) == {"query", "top_k"}
     assert set(TR.model_fields) == {"tool", "status", "data", "meta"}

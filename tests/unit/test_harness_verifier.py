@@ -191,7 +191,8 @@ def test_hallucination_no_refs_ok() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_run_rule_checks_composes_four() -> None:
+def test_run_rule_checks_composes_five() -> None:
+    """M6-T5 起规则层五类校验（新增 kb_evidence_support，知识污染防线②）。"""
     session = make_session()
     session.add_hypothesis(make_hypothesis())
     result = ToolResult(tool="query_metrics", status=ToolStatus.ERROR)
@@ -201,6 +202,7 @@ def test_run_rule_checks_composes_four() -> None:
         "args_schema",
         "step_refs",
         "hallucination",
+        "kb_evidence_support",
     ]
     assert not findings[0].ok
     assert all(f.ok for f in findings[1:])

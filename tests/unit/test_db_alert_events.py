@@ -89,6 +89,7 @@ class TestFieldContract:
             "hypotheses",
             "incidents",
             "investigations",
+            "kb_chunks",
             "remediation_proposals",
         ]
 

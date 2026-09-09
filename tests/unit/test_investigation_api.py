@@ -40,6 +40,10 @@ from oncall.harness.tools.registry import ToolRegistry, register_six_tools
 from oncall.harness.tools.schemas import ToolResult, ToolStatus
 from oncall.harness.verifier import MockVerifierJudge, Verifier, VerifierVerdict
 from oncall.ingest.app import create_app
+from oncall.knowledge.embedder import MockEmbedder
+from oncall.knowledge.pipeline import KnowledgePipeline
+from oncall.knowledge.retriever import KbRetriever
+from oncall.knowledge.store import InMemoryVectorStore
 
 pytestmark = pytest.mark.inproc_asgi
 
@@ -572,18 +576,17 @@ class TestGetMarkdownReport:
 class TestOpeningRecallReuse:
     def test_fingerprint_canonical_hit_returns_reused_report_without_rerun(self):
         """canonical 子集命中 + 源 mitigated → 复用既有报告（reused_from），不重查不建新调查。"""
-        from oncall.knowledge.embedder import MockEmbedder
-        from oncall.knowledge.pipeline import KnowledgePipeline
-        from oncall.knowledge.retriever import KbRetriever
-        from oncall.knowledge.store import InMemoryVectorStore
-
         engine = _make_engine()
         pipeline = KnowledgePipeline(engine, MockEmbedder(), InMemoryVectorStore())
         with Session(engine) as session:
             src_alert = AlertEvent(
                 fingerprint="fp-src",
                 source="alertmanager",
-                labels_json={"alertname": "DemoApiGwHighLatency", "job": "api-gw", "severity": "critical"},
+                labels_json={
+                    "alertname": "DemoApiGwHighLatency",
+                    "job": "api-gw",
+                    "severity": "critical",
+                },
                 annotations_json={},
                 fired_at=FIRED_AT,
                 status="deduped",
@@ -608,7 +611,11 @@ class TestOpeningRecallReuse:
             new_alert = AlertEvent(
                 fingerprint="fp-new",
                 source="alertmanager",
-                labels_json={"alertname": "DemoApiGwHighLatency", "job": "api-gw", "severity": "critical"},
+                labels_json={
+                    "alertname": "DemoApiGwHighLatency",
+                    "job": "api-gw",
+                    "severity": "critical",
+                },
                 annotations_json={},
                 fired_at=FIRED_AT,
                 status="deduped",

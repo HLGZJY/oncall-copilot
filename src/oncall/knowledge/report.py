@@ -18,11 +18,18 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from oncall.db.models import AlertEvent
-from oncall.db.models import Hypothesis as HypothesisRow
-from oncall.db.models import Investigation
-from oncall.db.models import RemediationProposal
+from oncall.db.models import AlertEvent, Investigation, RemediationProposal
+from oncall.db.models import (
+    EvidenceStep as EvidenceStepRow,
+)
+from oncall.db.models import (
+    Hypothesis as HypothesisRow,
+)
+from oncall.db.models import (
+    Incident as IncidentRow,
+)
 from oncall.db.views import investigation_report_body
+from oncall.ingest.fingerprint import as_utc
 
 __all__ = [
     "KB_SECTIONS",
@@ -40,11 +47,7 @@ SUGGESTIONS_PLACEHOLDER = "改进建议：见 runbook 正文 / 待人工补充�
 
 def _iso(moment: Any) -> str:
     """datetime → ISO 字符串（None 透传；时区口径照 views.alert_body 先例）。"""
-    if moment is None:
-        return ""
-    from oncall.ingest.fingerprint import as_utc
-
-    return as_utc(moment).isoformat()
+    return "" if moment is None else as_utc(moment).isoformat()
 
 
 def build_closed_loop_report(session: Session, incident_id: int) -> dict[str, Any]:
@@ -54,15 +57,11 @@ def build_closed_loop_report(session: Session, incident_id: int) -> dict[str, An
     调用方转 404（与 M4 GET 出口 404 语义一致）；`root_cause` 无 confirmed 假设
     时如实落「无已证实假设」——不挑数据不虚构；时间线逐条锚 alert_events 行 id。
     """
-    inv_row = session.scalar(
-        select(Investigation).where(Investigation.incident_id == incident_id)
-    )
+    inv_row = session.scalar(select(Investigation).where(Investigation.incident_id == incident_id))
     if inv_row is None or inv_row.status == "running":
         raise KeyError(f"无调查报告: incident_id={incident_id}")
 
     # alert_ids 来自 incidents 表（D-19 五字段，primary anchor = alert_ids[0]）
-    from oncall.db.models import Incident as IncidentRow
-
     incident_row = session.get(IncidentRow, incident_id)
     incident_alert_ids = list(incident_row.alert_ids) if incident_row is not None else []
 
@@ -93,15 +92,10 @@ def build_closed_loop_report(session: Session, incident_id: int) -> dict[str, An
 
     # ── 根因节：confirmed 假设 + 支持证据步摘要（来源锚 hypotheses 行）──
     hyp_rows = list(
-        session.scalars(
-            select(HypothesisRow).where(HypothesisRow.incident_id == incident_id)
-        )
+        session.scalars(select(HypothesisRow).where(HypothesisRow.incident_id == incident_id))
     )
     confirmed = [h for h in hyp_rows if h.status == "confirmed"]
-    root_cause_text = (
-        "\n".join(f"- {h.text}（支持步: {', '.join(str(n) for n in h.supporting_steps) or '无'}）" for h in confirmed)
-        or "无已证实假设"
-    )
+    root_cause_text = _render_confirmed(confirmed)
 
     # ── 处置节：remediation_proposals 全链（D-46 留痕直出）──
     proposal_rows = list(
@@ -122,9 +116,12 @@ def build_closed_loop_report(session: Session, incident_id: int) -> dict[str, An
     ] or ["无处置提案"]
 
     # ── 改进建议节：D-50 双门槛门控（env 缺省关 → 占位文案）──
-    suggestions = _suggestions_section(
-        {"termination": inv_row.status, "conclusion": inv_row.conclusion, "hypotheses": root_cause_text}
-    )
+    summary = {
+        "termination": inv_row.status,
+        "conclusion": inv_row.conclusion,
+        "hypotheses": root_cause_text,
+    }
+    suggestions = _suggestions_section(summary)
 
     # 证据链报告 body（M4 契约）附在五节之后由调用方渲染；此处只产五节
     return {
@@ -134,10 +131,11 @@ def build_closed_loop_report(session: Session, incident_id: int) -> dict[str, An
         },
         "timeline": {
             "text": "\n".join(
-                "- [{status}] {alertname}@{instance} fired={fired_at} last={last_fired_at} "
-                "resolved={resolved_at} dedup_count={dedup_count} (alert#{alert_id})".format(**r)
+                "- [{status}] {alertname}@{instance} fired={fired_at} last={last_fired_at}"
+                " resolved={resolved_at} dedup={dedup_count} (alert#{alert_id})".format(**r)
                 for r in timeline_rows
-            ) or "无关联告警",
+            )
+            or "无关联告警",
             "source": {"alert_events": timeline_anchors},
         },
         "root_cause": {
@@ -148,7 +146,10 @@ def build_closed_loop_report(session: Session, incident_id: int) -> dict[str, An
             "text": "\n".join(remediation_lines),
             "source": {"remediation_proposals": [p.id for p in proposal_rows]},
         },
-        "suggestions": {"text": suggestions, "source": {"generated_by": "llm-gated" if _suggestions_enabled() else "placeholder"}},
+        "suggestions": {
+            "text": suggestions,
+            "source": {"generated_by": "llm-gated" if _suggestions_enabled() else "placeholder"},
+        },
     }
 
 
@@ -173,11 +174,27 @@ def _render_opening_summary(opening: dict[str, Any]) -> str:
     )
 
 
+def _render_confirmed(confirmed: list[HypothesisRow]) -> str:
+    """confirmed 假设 → 根因节文本；无 confirmed 如实落「无已证实假设」（不虚构）。"""
+    if not confirmed:
+        return "无已证实假设"
+    lines = (
+        f"- {h.text}（支持步: {', '.join(str(n) for n in h.supporting_steps) or '无'}）"
+        for h in confirmed
+    )
+    return "\n".join(lines)
+
+
 def json_compact_status(context: dict[str, Any]) -> str:
     """三源 context 状态摘要（source→status 对，D-16 形状）。"""
     if not context:
         return "无"
-    return " ".join(f"{src}={body.get('status', '—')}" for src, body in context.items() if isinstance(body, dict))
+    parts = (
+        f"{src}={body.get('status', '—')}"
+        for src, body in context.items()
+        if isinstance(body, dict)
+    )
+    return " ".join(parts)
 
 
 def _suggestions_enabled() -> bool:
@@ -219,14 +236,9 @@ def evidence_chain_markdown(session: Session, incident_id: int) -> str:
     与 api._render_report_markdown 同口径但数据源在 knowledge 侧复用
     `investigation_report_body`（D-35 权威序列化器），避免 api 内部函数外溢。
     """
-    inv_row = session.scalar(
-        select(Investigation).where(Investigation.incident_id == incident_id)
-    )
+    inv_row = session.scalar(select(Investigation).where(Investigation.incident_id == incident_id))
     if inv_row is None or inv_row.status == "running":
         raise KeyError(f"无调查报告: incident_id={incident_id}")
-    from oncall.db.models import EvidenceStep as EvidenceStepRow
-    from oncall.db.models import Hypothesis as HypothesisRow
-
     step_rows = list(
         session.scalars(
             select(EvidenceStepRow)
@@ -235,9 +247,7 @@ def evidence_chain_markdown(session: Session, incident_id: int) -> str:
         )
     )
     hyp_rows = list(
-        session.scalars(
-            select(HypothesisRow).where(HypothesisRow.incident_id == incident_id)
-        )
+        session.scalars(select(HypothesisRow).where(HypothesisRow.incident_id == incident_id))
     )
     body = investigation_report_body(inv_row, step_rows, hyp_rows)
     lines = [
@@ -256,5 +266,7 @@ def evidence_chain_markdown(session: Session, incident_id: int) -> str:
     for hyp in body["hypotheses"]:
         supporting = ", ".join(str(n) for n in hyp["supporting_steps"]) or "无"
         against = ", ".join(str(n) for n in hyp["against_steps"]) or "无"
-        lines.append(f"- [{hyp['status']}] {hyp['text']}（支持步: {supporting}｜反对步: {against}）")
+        lines.append(
+            f"- [{hyp['status']}] {hyp['text']}（支持步: {supporting}｜反对步: {against}）"
+        )
     return "\n".join(lines) + "\n"

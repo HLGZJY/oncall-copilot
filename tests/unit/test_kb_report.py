@@ -12,10 +12,12 @@ from sqlalchemy.orm import Session
 from oncall.db import create_tables
 from oncall.db.models import (
     AlertEvent,
-    Hypothesis as HypothesisRow,
     Incident,
     Investigation,
     RemediationProposal,
+)
+from oncall.db.models import (
+    Hypothesis as HypothesisRow,
 )
 from oncall.knowledge.report import (
     KB_SECTIONS,
@@ -122,7 +124,7 @@ def test_timeline_is_measured_data_not_fabricated(db: Session) -> None:
     incident_id = _seed_full_scenario(db)
     sections = build_closed_loop_report(db, incident_id)
     assert "fired=2026-09-06T06:28:21+00:00" in sections["timeline"]["text"]
-    assert "dedup_count=3" in sections["timeline"]["text"]
+    assert "dedup=3" in sections["timeline"]["text"]
     assert "(alert#1)" in sections["timeline"]["text"]
 
 
@@ -148,7 +150,9 @@ def _seed_empty_concluded(session: Session) -> None:
     session.commit()
 
 
-def test_suggestions_placeholder_when_llm_disabled(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_suggestions_placeholder_when_llm_disabled(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """D-50：env 缺省关 → 占位文案；开落同款占位（真实 LLM 是 key 门槛票未实装）。"""
     incident_id = _seed_full_scenario(db)
     monkeypatch.delenv("ONCALL_KB_SUGGESTIONS_LLM", raising=False)

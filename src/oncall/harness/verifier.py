@@ -26,19 +26,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from oncall.harness.context_manager import summarize_step
-from oncall.harness.planner import PlannerDecision
 from oncall.harness.session import HypothesisStatus
-from oncall.harness.tools.registry import TOOL_SPECS
-from oncall.harness.tools.schemas import ToolStatus
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from oncall.harness.session import Hypothesis, InvestigationSession
-    from oncall.harness.tools.schemas import ToolResult
 
 __all__ = [
     "FALSIFICATION_PROMPT_TEMPLATE",
@@ -108,15 +104,6 @@ class VerifierJudge(Protocol):
 
 
 @dataclass(frozen=True)
-class Finding:
-    """规则层单条校验结论：`check` 取值 tool_result / args_schema / step_refs / hallucination。"""
-
-    check: str
-    ok: bool
-    detail: str
-
-
-@dataclass(frozen=True)
 class JudgmentOutcome:
     """裁决结果：`verdict=None` 即降级（超限 / 无 judge / 裁决异常），不产出计划字段。"""
 
@@ -155,83 +142,18 @@ class MockVerifierJudge:
         return self._default
 
 
-# ---------------------------------------------------------------------------
-# 规则层（纯函数族）
-# ---------------------------------------------------------------------------
-
-
-def check_tool_result(result: ToolResult) -> Finding:
-    """校验 1：ok/empty 放行，error/unavailable 产出 finding（语义对齐 D-23/D-16）。"""
-    ok = result.status in (ToolStatus.OK, ToolStatus.EMPTY)
-    detail = "状态放行" if ok else f"工具 {result.tool} 状态 {result.status.value} 需调查方关注"
-    return Finding(check="tool_result", ok=ok, detail=detail)
-
-
-def check_args_schema(decision: PlannerDecision) -> Finding:
-    """校验 2：`next_tool` 入参以 TOOL_SPECS 的 schema 为权威校验（勿手抄第二份）。"""
-    if decision.next_tool is None:
-        return Finding(check="args_schema", ok=True, detail="收束分支无工具入参")
-    spec = next((s for s in TOOL_SPECS if s.name == decision.next_tool), None)
-    if spec is None:
-        return Finding(check="args_schema", ok=False, detail=f"未知工具名 {decision.next_tool}")
-    try:
-        spec.schema.model_validate(decision.args or {})
-    except ValidationError as exc:
-        errors = exc.error_count()
-        return Finding(check="args_schema", ok=False, detail=f"入参不符 schema：{errors} 处")
-    return Finding(check="args_schema", ok=True, detail="入参合法")
-
-
-def _dangling_refs(session: InvestigationSession, hypothesis: Hypothesis) -> list[int]:
-    known = {step.step_no for step in session.steps}
-    refs = (*hypothesis.supporting_steps, *hypothesis.against_steps)
-    return sorted({n for n in refs if n not in known})
-
-
-def check_step_refs(session: InvestigationSession) -> Finding:
-    """校验 3：假设引用的 step_no 必须存在于 session.steps（假设提出分支把门）。"""
-    dangling = sorted({n for h in session.hypotheses for n in _dangling_refs(session, h)})
-    ok = not dangling
-    detail = "引用全部存在" if ok else f"引用不存在的证据步：{dangling}"
-    return Finding(check="step_refs", ok=ok, detail=detail)
-
-
-def check_hallucination(
-    session: InvestigationSession,
-    *,
-    conclusion: str | None = None,
-    referenced_steps: Sequence[int] = (),
-) -> Finding:
-    """校验 4：hallucination 判定——收束分支：零证据步即下结论 = 无中生有；
-    引用分支：引用的工具输出（step_no）在 session 中不存在即检出。"""
-    missing = sorted({n for n in referenced_steps if n not in {s.step_no for s in session.steps}})
-    if missing:
-        return Finding(check="hallucination", ok=False, detail=f"引用了不存在的证据步：{missing}")
-    if conclusion is not None and session.step_count == 0:
-        return Finding(check="hallucination", ok=False, detail="零证据步即收束结论")
-    return Finding(check="hallucination", ok=True, detail="未见臆测引用")
-
-
-def run_rule_checks(
-    session: InvestigationSession,
-    decision: PlannerDecision,
-    *,
-    result: ToolResult | None = None,
-    referenced_steps: Sequence[int] = (),
-) -> list[Finding]:
-    """规则层组合入口：四类校验按序产出 findings（result 缺省跳过校验 1）。"""
-    findings: list[Finding] = []
-    if result is not None:
-        findings.append(check_tool_result(result))
-    findings.append(check_args_schema(decision))
-    findings.append(check_step_refs(session))
-    findings.append(
-        check_hallucination(
-            session, conclusion=decision.conclusion, referenced_steps=referenced_steps
-        )
-    )
-    return findings
-
+# 规则层（纯函数族）抽出至 harness/rules.py（C6 行数预算）；此处 re-export
+# 保持既有 import 面（loop.py / 测试经 verifier 引用）零倒改。
+from oncall.harness.rules import (  # noqa: E402,F401
+    Finding,
+    _dangling_refs,
+    check_args_schema,
+    check_hallucination,
+    check_kb_evidence_support,
+    check_step_refs,
+    check_tool_result,
+    run_rule_checks,
+)
 
 # ---------------------------------------------------------------------------
 # Verifier：裁决接缝 + 假设流转
@@ -294,6 +216,12 @@ class Verifier:
         if dangling:
             msg = f"假设引用不存在的证据步：{dangling}，拒绝流转"
             raise VerifierError(msg)
+        if verdict.supported and hypothesis.supporting_steps:
+            steps_by_no = {step.step_no: step for step in session.steps}
+            tools = [steps_by_no[n].tool for n in hypothesis.supporting_steps if n in steps_by_no]
+            if tools and all(t == "query_kb" for t in tools):
+                msg = "假设仅由 query_kb（kb 参考证据）支撑，不可证实（知识污染防线②，M6-T5）"
+                raise VerifierError(msg)
         status = HypothesisStatus.CONFIRMED if verdict.supported else HypothesisStatus.REJECTED
         updated = hypothesis.model_copy(update={"status": status})
         session.hypotheses = [updated if h is hypothesis else h for h in session.hypotheses]

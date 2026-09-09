@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from oncall.db.models import AlertEvent, KbChunk
+from oncall.db.models import AlertEvent, Investigation, KbChunk
 from oncall.db.models import Incident as IncidentRow
 
 if TYPE_CHECKING:
@@ -88,8 +88,6 @@ def _fingerprint_cache_hit(session: Session, incident: IncidentRow) -> int | Non
     signatures = _canonical_signatures(session, incident)
     if not signatures:
         return None
-    from oncall.db.models import Investigation
-
     rows = session.execute(
         select(IncidentRow.id)
         .join(Investigation, Investigation.incident_id == IncidentRow.id)
@@ -134,4 +132,5 @@ def _labels_summary(session: Session, incident: IncidentRow) -> str:
     if alert is None:
         return ""
     labels = alert.labels_json
-    return f"{labels.get('alertname', '')}@{labels.get('instance', '')} {labels.get('job', '')}".strip()
+    name = labels.get("alertname", "")
+    return f"{name}@{labels.get('instance', '')} {labels.get('job', '')}".strip()

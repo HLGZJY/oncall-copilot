@@ -134,9 +134,7 @@ def create_app(  # noqa: PLR0913, PLR0917 — 注入面持续增长（M2 classif
         # D-56：recovered 后同步触发入库（best-effort，失败落日志不阻塞处置出口）
         remediation = dataclasses.replace(remediation, kb_pipeline=kb_pipeline)
         if investigation is not None and investigation.kb_retriever is None:
-            investigation = dataclasses.replace(
-                investigation, kb_retriever=kb_pipeline.retriever()
-            )
+            investigation = dataclasses.replace(investigation, kb_retriever=kb_pipeline.retriever())
     app.include_router(create_remediation_router(engine, remediation))
     app.include_router(create_kb_router(engine, kb_pipeline))
 
@@ -151,13 +149,14 @@ def _kb_pipeline_from_env(engine: Engine) -> KnowledgePipeline:
     store：`ONCALL_CHROMA_PATH` 设置 → Chroma persistent（D-52）；缺省内存索引
     （权威在 kb_chunks 表，可重建，D-55）。
     """
-    from oncall.knowledge.embedder import MockEmbedder
-    from oncall.knowledge.pipeline import KnowledgePipeline
-    from oncall.knowledge.store import InMemoryVectorStore
+    from oncall.knowledge.embedder import MockEmbedder  # noqa: PLC0415
+    from oncall.knowledge.pipeline import KnowledgePipeline  # noqa: PLC0415
+    from oncall.knowledge.store import InMemoryVectorStore  # noqa: PLC0415
 
     embedder: object = MockEmbedder()
     if os.environ.get(KB_EMBEDDER_ENV, "mock").strip().lower() == "bge":
-        from sentence_transformers import SentenceTransformer  # noqa: PLC0415（key/环境门槛票）
+        # 真实模型走 key/环境门槛票（T7）
+        from sentence_transformers import SentenceTransformer  # noqa: PLC0415
 
         model = SentenceTransformer("BAAI/bge-small-zh-v1.5")
 
@@ -171,7 +170,7 @@ def _kb_pipeline_from_env(engine: Engine) -> KnowledgePipeline:
     store = InMemoryVectorStore()
     chroma_path = os.environ.get(KB_CHROMA_PATH_ENV)
     if chroma_path:
-        from oncall.knowledge.store import ChromaVectorStore
+        from oncall.knowledge.store import ChromaVectorStore  # noqa: PLC0415
 
         store = ChromaVectorStore(path=chroma_path)
 

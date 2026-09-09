@@ -12,6 +12,7 @@ from sqlalchemy import create_engine, event, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from oncall.db import create_tables
 from oncall.db.models import (
     AlertEvent,
     Base,
@@ -22,7 +23,6 @@ from oncall.db.models import (
     KbChunk,
     RemediationProposal,
 )
-from oncall.db import create_tables
 
 # ── 冻结面（只消费不推翻）──
 
@@ -127,17 +127,34 @@ def test_kb_chunk_superseded_semantics(db: Session) -> None:
 def test_existing_tables_frozen():
     """既有表列集合回归（D-25/D-31/D-46 冻结面不破的 T1 侧守卫）。"""
     assert set(AlertEvent.__table__.columns.keys()) >= {
-        "id", "fingerprint", "dedup_count", "classification_json",
+        "id",
+        "fingerprint",
+        "dedup_count",
+        "classification_json",
     }
     assert set(Investigation.__table__.columns.keys()) >= {
-        "id", "incident_id", "status", "failure_mode",
+        "id",
+        "incident_id",
+        "status",
+        "failure_mode",
     }
     assert set(EvidenceStep.__table__.columns.keys()) >= {
-        "id", "incident_id", "step_no", "output_json",
+        "id",
+        "incident_id",
+        "step_no",
+        "output_json",
     }
     assert set(Hypothesis.__table__.columns.keys()) == {
-        "id", "incident_id", "text", "status", "supporting_steps", "against_steps",
+        "id",
+        "incident_id",
+        "text",
+        "status",
+        "supporting_steps",
+        "against_steps",
     }
     assert set(RemediationProposal.__table__.columns.keys()) >= {
-        "id", "incident_id", "dry_run_json", "status",
+        "id",
+        "incident_id",
+        "dry_run_json",
+        "status",
     }

@@ -21,7 +21,6 @@ status 枚举冻结不扩——status ≠ investigating 仍允许调查，报告
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
@@ -31,6 +30,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from oncall.api.report_md import render_report_markdown
 from oncall.db import Incident
 from oncall.db.evidence_repo import EvidenceRepository
 from oncall.db.models import EvidenceStep as EvidenceStepRow
@@ -66,6 +66,26 @@ REPORT_KEYS = frozenset(
 )
 
 
+def _reused_report_body(session: Session, reused_from: int) -> dict[str, Any]:
+    """缓存复用出口（D-57）：读源事件报告 + `reused_from` 标注（不重查不建新调查）。"""
+    src_row = session.scalar(select(Investigation).where(Investigation.incident_id == reused_from))
+    if src_row is None or src_row.status == "running":
+        raise HTTPException(status_code=404, detail=f"复用源无可用报告: incident_id={reused_from}")
+    src_steps = list(
+        session.scalars(
+            select(EvidenceStepRow)
+            .where(EvidenceStepRow.incident_id == reused_from)
+            .order_by(EvidenceStepRow.step_no)
+        )
+    )
+    src_hyps = list(
+        session.scalars(select(HypothesisRow).where(HypothesisRow.incident_id == reused_from))
+    )
+    body = investigation_report_body(src_row, src_steps, src_hyps)
+    body["reused_from"] = reused_from
+    return body
+
+
 def build_report(
     result: InvestigationResult, opening_card: dict[str, Any] | None
 ) -> dict[str, Any]:
@@ -92,88 +112,6 @@ def build_report(
         "steps": [step.model_dump(mode="json") for step in result.steps],
         "hypotheses": [h.model_dump(mode="json") for h in result.hypotheses],
     }
-
-
-# ---------------------------------------------------------------------------
-# Markdown 最小版导出（M4-T4 / D-36）：str 模板常量 + 数据直出渲染
-#
-# D-36：不引入 jinja2 / markdown 库，str.format 拼接零新依赖；最小版是 M6
-# 报告生成的**输入**而非替代——时间线美化 / 处置记录 / 改进建议均不在本票。
-# D-35 分工：`output_json` 原始全文可回溯走 JSON 报告，正文用 `output_summary`
-# （体积不可控，不进 Markdown）。转义不做 HTML/Markdown 处理（数据直出、内部消费）。
-# ---------------------------------------------------------------------------
-
-REPORT_MD_HEADER_TEMPLATE = """\
-# 调查报告 incident_id={incident_id}
-
-- termination: {termination}
-- conclusion: {conclusion}
-- failure_mode: {failure_mode}
-- step_count: {step_count}
-- total_tokens: {total_tokens}
-- total_cost_cny: {total_cost_cny}
-- stop_reason: {stop_reason}
-- confidence: {confidence}
-"""
-
-REPORT_MD_STEP_TEMPLATE = """\
-## Step {step_no} — {tool}
-
-- thought: {thought}
-- input_json: {input_json}
-- output_summary: {output_summary}
-- ts: {ts}
-- tokens: {tokens}
-"""
-
-REPORT_MD_HYPOTHESES_HEADER = "## 假设\n"
-
-REPORT_MD_HYPOTHESIS_TEMPLATE = "- [{status}] {text}（支持步: {supporting}｜反对步: {against}）"
-
-
-def _render_report_markdown(body: dict[str, Any]) -> str:
-    """读库报告 dict（`investigation_report_body` 口径）→ Markdown 最小版。
-
-    数据直出零加工：步渲染 `## Step N — {tool}` + thought / input_json /
-    output_summary / ts / tokens（票面钉死格式）；`output_json` 不进正文
-    （D-36/G7 延伸）；假设渲染 status 与 supporting/against 步号。
-    """
-    parts = [
-        REPORT_MD_HEADER_TEMPLATE.format(
-            incident_id=body["incident_id"],
-            termination=body["termination"],
-            conclusion=body["conclusion"],
-            failure_mode=body["failure_mode"],
-            step_count=body["step_count"],
-            total_tokens=body["total_tokens"],
-            total_cost_cny=body["total_cost_cny"],
-            stop_reason=body["stop_reason"],
-            confidence=body["confidence"],
-        )
-    ]
-    for step in body["steps"]:
-        parts.append(
-            REPORT_MD_STEP_TEMPLATE.format(
-                step_no=step["step_no"],
-                tool=step["tool"],
-                thought=step["thought"],
-                input_json=json.dumps(step["input_json"], ensure_ascii=False, sort_keys=True),
-                output_summary=step["output_summary"],
-                ts=step["ts"],
-                tokens=step["tokens"],
-            )
-        )
-    parts.append(REPORT_MD_HYPOTHESES_HEADER)
-    for hyp in body["hypotheses"]:
-        parts.append(
-            REPORT_MD_HYPOTHESIS_TEMPLATE.format(
-                status=hyp["status"],
-                text=hyp["text"],
-                supporting=", ".join(str(n) for n in hyp["supporting_steps"]) or "无",
-                against=", ".join(str(n) for n in hyp["against_steps"]) or "无",
-            )
-        )
-    return "\n".join(parts) + "\n"
 
 
 @dataclass(frozen=True)
@@ -228,33 +166,7 @@ def create_investigation_router(engine: Engine, deps: InvestigationDeps) -> APIR
             if deps.kb_retriever is not None:
                 outcome = opening_recall(session, req.incident_id, deps.kb_retriever)
                 if outcome.kind == "reuse":
-                    src_row = session.scalar(
-                        select(Investigation).where(
-                            Investigation.incident_id == outcome.reused_from
-                        )
-                    )
-                    if src_row is None or src_row.status == "running":
-                        raise HTTPException(
-                            status_code=404,
-                            detail=f"复用源无可用报告: incident_id={outcome.reused_from}",
-                        )
-                    src_steps = list(
-                        session.scalars(
-                            select(EvidenceStepRow)
-                            .where(EvidenceStepRow.incident_id == outcome.reused_from)
-                            .order_by(EvidenceStepRow.step_no)
-                        )
-                    )
-                    src_hyps = list(
-                        session.scalars(
-                            select(HypothesisRow).where(
-                                HypothesisRow.incident_id == outcome.reused_from
-                            )
-                        )
-                    )
-                    body = investigation_report_body(src_row, src_steps, src_hyps)
-                    body["reused_from"] = outcome.reused_from
-                    return body
+                    return _reused_report_body(session, outcome.reused_from or 0)
                 if outcome.kind == "reference":
                     kb_reference = outcome.hits
             # 票面语义：status ≠ investigating 仍允许调查（不回写 incidents 行），
@@ -331,7 +243,7 @@ def create_investigation_router(engine: Engine, deps: InvestigationDeps) -> APIR
         追加 = knowledge 模块五节闭环报告（开局卡片/时间线/根因/处置/改进建议，
         每数据点可回溯库行，D-49）；五节拼装失败不静默——与 404 语义一致上抛。
         """
-        content = _render_report_markdown(_load_report_body(incident_id))
+        content = render_report_markdown(_load_report_body(incident_id))
         with Session(engine) as session:
             sections = build_closed_loop_report(session, incident_id)
             content += render_closed_loop_markdown(sections)

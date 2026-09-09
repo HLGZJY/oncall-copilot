@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
 
 from oncall.db import create_tables
-from oncall.db.models import AlertEvent, Incident, Investigation
+from oncall.db.models import AlertEvent, Incident, Investigation, KbChunk
 from oncall.knowledge.chunking import chunk_report
 from oncall.knowledge.embedder import MockEmbedder
 from oncall.knowledge.pipeline import KnowledgePipeline, NotEligibleForIngestion
@@ -83,7 +83,12 @@ def test_chunk_report_boundaries_and_metadata() -> None:
         "suggestions": {"text": "占位", "source": {"generated_by": "placeholder"}},
     }
     chunks = chunk_report(sections, incident_id=9, investigation_id=None)
-    assert [c["section"] for c in chunks] == ["opening_card", "timeline", "root_cause", "suggestions"]
+    assert [c["section"] for c in chunks] == [
+        "opening_card",
+        "timeline",
+        "root_cause",
+        "suggestions",
+    ]
     assert [c["seq"] for c in chunks] == [0, 1, 2, 4]  # remediation 空节跳过，seq 保留位次
     assert all(c["incident_id"] == 9 and c["investigation_id"] is None for c in chunks)
     assert chunks[0]["source_meta_json"] == {"source": {"investigations": [1]}}
@@ -114,16 +119,15 @@ def test_inmemory_store_cosine_rank_and_incident_delete() -> None:
     assert [h["id"] for h in store.query([0.9, 0.1], top_k=2)] == ["2"]
 
 
-def test_chroma_lazy_import_unavailable_semantics() -> None:
-    """未安装 chromadb → VectorStoreUnavailable（D-16 unavailable 语义，不炸 import）。"""
+def test_chroma_lazy_import_unavailable_semantics(tmp_path) -> None:
+    """未安装 chromadb → VectorStoreUnavailable；已安装 → 可构造（依赖冒烟通过）。"""
     try:
-        ChromaVectorStore(path=":memory:")
+        store = ChromaVectorStore(path=str(tmp_path / "chroma"))
     except VectorStoreUnavailable:
-        return  # 未安装路径：unavailable 语义成立
-    except Exception:  # pragma: no cover - 已安装但参数错
-        pytest.fail("ChromaVectorStore 抛了非 unavailable 异常")
-    else:
-        return  # 已安装路径：真实实现可构造（冒烟通过）
+        return  # 未安装路径：unavailable 语义成立（D-16）
+        return
+    store.upsert(["1"], [[1.0, 0.0]], [{"incident_id": 1}])
+    assert store.query([1.0, 0.0], top_k=1)[0]["id"] == "1"
 
 
 def test_pipeline_ingestion_gate_and_supersede(db: Session) -> None:
@@ -139,8 +143,6 @@ def test_pipeline_ingestion_gate_and_supersede(db: Session) -> None:
     incident_id = _seed_mitigated(db)
     n = pipeline.ingest_incident(incident_id, db)
     assert n == 5  # 五节全非空（remediation 空表落「无处置提案」如实行）
-    from oncall.db.models import KbChunk
-
     rows = list(db.scalars(select(KbChunk).where(KbChunk.incident_id == incident_id)))
     assert all(r.superseded_at is None for r in rows)
 

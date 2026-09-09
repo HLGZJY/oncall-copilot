@@ -20,6 +20,7 @@ remediation 层 `run_confirm_chain`，本层只调用）。
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -33,6 +34,8 @@ from oncall.db.models import RemediationProposal
 from oncall.remediation import service
 from oncall.remediation.executor import RemediationExecutor
 from oncall.remediation.verifier import RecoveryVerifier, run_confirm_chain
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["ConfirmRequest", "RemediationDeps", "create_remediation_router"]
 
@@ -133,12 +136,8 @@ def create_remediation_router(engine: Engine, deps: RemediationDeps) -> APIRoute
                 # best-effort——失败落日志重试语义，不阻塞处置出口（D-56 触发注记）
                 try:
                     deps.kb_pipeline.ingest_incident(row.incident_id, session)
-                except Exception as exc:
-                    import logging
-
-                    logging.getLogger(__name__).warning(
-                        "知识入库触发失败（incident_id=%s）：%s", row.incident_id, exc
-                    )
+                except Exception as exc:  # best-effort 触发面，失败不阻塞处置出口
+                    logger.warning("知识入库触发失败（incident_id=%s）：%s", row.incident_id, exc)
             return _serialize_proposal(row)
 
     @router.get("/remediations/{proposal_id}")

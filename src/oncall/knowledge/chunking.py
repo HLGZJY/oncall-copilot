@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from oncall.knowledge.report import KB_SECTIONS
+
 __all__ = ["chunk_report"]
 
 
@@ -38,6 +40,4 @@ def chunk_report(
 
 def _section_seq_map() -> dict[str, int]:
     """KB_SECTIONS 顺序 → seq（从 0 递增；与 kb_chunks.section 五值同词表）。"""
-    from oncall.knowledge.report import KB_SECTIONS
-
     return {section: idx for idx, section in enumerate(KB_SECTIONS)}

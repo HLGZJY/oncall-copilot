@@ -101,6 +101,7 @@ class TestColumnContract:
             "hypotheses",
             "incidents",
             "investigations",
+            "kb_chunks",
             "remediation_proposals",
         ]
 
@@ -125,6 +126,7 @@ class TestCreateAllIdempotent:
             "hypotheses",
             "incidents",
             "investigations",
+            "kb_chunks",
             "remediation_proposals",
         ]
         cols = {c["name"] for c in inspect(engine).get_columns("remediation_proposals")}
