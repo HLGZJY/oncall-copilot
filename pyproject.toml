@@ -18,6 +18,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# M6-T7（D-51 显式评审通过）：真实 embedding/向量索引依赖——kb 管线走
+# Embedder/VectorStore Protocol 注入，生产代码零硬依赖；仅真实召回 e2e 与
+# 部署形态需要安装 `.[kb]`。mock 测试路径零影响（本地包不装也全绿）。
+kb = [
+    "sentence-transformers>=3.0,<7",  # 本地 bge-small-zh-v1.5（D-51）
+    "chromadb>=0.5,<3",               # ChromaVectorStore 可重建索引（D-52）
+]
 dev = [
     "pytest>=8.3,<9",
     "pytest-cov>=5.0,<7",

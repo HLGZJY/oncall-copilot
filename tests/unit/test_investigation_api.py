@@ -642,6 +642,70 @@ class TestOpeningRecallReuse:
         assert body["reused_from"] == src_id
         assert body["conclusion"] == "CPU 飙高"
 
+    def test_kb_pipeline_wiring_via_create_app_enables_reuse(self):
+        """T7 回归：create_app(kb_pipeline=...) 装配面必须让开局召回生效（D-57）。
+
+        装配顺序缺陷回归（2026-09-09 T7 真实 e2e 抓出）：调查路由注册先于 kb
+        wiring 时，路由闭包捕获 replace 前的 deps（kb_retriever=None），
+        开局召回/复用出口在 create_app 接线面下永远不生效。
+        """
+        engine = _make_engine()
+        pipeline = KnowledgePipeline(engine, MockEmbedder(), InMemoryVectorStore())
+        with Session(engine) as session:
+            src_alert = AlertEvent(
+                fingerprint="fp-src-wired",
+                source="alertmanager",
+                labels_json={"alertname": "DemoDbPoolSaturated", "job": "api-gw"},
+                annotations_json={},
+                fired_at=FIRED_AT,
+                status="deduped",
+            )
+            session.add(src_alert)
+            session.flush()
+            src_incident = Incident(alert_ids=[src_alert.id], status="mitigated")
+            session.add(src_incident)
+            session.flush()
+            session.add(
+                Investigation(
+                    incident_id=src_incident.id,
+                    status="concluded",
+                    conclusion="连接池打满",
+                    step_count=2,
+                )
+            )
+            session.commit()
+            pipeline.ingest_incident(src_incident.id, session)
+            session.commit()
+            new_alert = AlertEvent(
+                fingerprint="fp-new-wired",
+                source="alertmanager",
+                labels_json={"alertname": "DemoDbPoolSaturated", "job": "api-gw"},
+                annotations_json={},
+                fired_at=FIRED_AT,
+                status="deduped",
+            )
+            session.add(new_alert)
+            session.flush()
+            new_incident = Incident(alert_ids=[new_alert.id], status="investigating")
+            session.add(new_incident)
+            session.commit()
+            new_id = new_incident.id
+            src_id = src_incident.id
+
+        components = make_components(
+            MockPlanner(script=[conclusion_decision("不应被走到")]),
+        )
+        # 关键差异：kb_retriever 不直注，走 create_app 的 kb_pipeline 装配面
+        app = create_app(
+            engine, investigation=InvestigationDeps(components=components), kb_pipeline=pipeline
+        )
+        client = TestClient(app)
+        resp = client.post("/investigate", json={"incident_id": new_id})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["reused_from"] == src_id
+        assert body["conclusion"] == "连接池打满"
+
     def test_kb_reference_key_absent_without_kb_retriever(self):
         """未注入 kb_retriever → 报告 JSON 无 kb_reference 键（D-35 契约不破）。"""
         client, engine = _client_with_components(

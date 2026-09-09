@@ -112,6 +112,24 @@ def create_app(  # noqa: PLR0913, PLR0917 — 注入面持续增长（M2 classif
         )
     )
 
+    # 知识库装配（M6-T4 / D-51–D-57）：env 开关缺省关——关闭时 kb_pipeline 为
+    # None（/kb/ingest 落 503、query_kb 落 stub、开局召回不启用），既有测试零影响。
+    # T7 回归（2026-09-09 真实 e2e 抓出）：kb wiring 必须先于调查/处置路由注册——
+    # 路由工厂闭包按引用捕获 deps 对象，注册后再 dataclasses.replace 生成的新
+    # deps（kb_retriever/kb_pipeline）路由侧永远看不到，开局召回在接线面下失明。
+    kb_enabled = os.environ.get(KB_ENABLED_ENV, "").strip().lower() in {"1", "true", "yes"}
+    if kb_enabled and kb_pipeline is None:
+        kb_pipeline = _kb_pipeline_from_env(engine)
+    # 确认门路由（M5 issue 04 / T4 / D-40/D-48）：执行器/验证器缺省 None →
+    # confirm approve 落 503 降级（proposal 留 approved 即终）；GET 查询照常可用
+    if remediation is None:
+        remediation = RemediationDeps()
+    if kb_pipeline is not None:
+        # D-56：recovered 后同步触发入库（best-effort，失败落日志不阻塞处置出口）
+        remediation = dataclasses.replace(remediation, kb_pipeline=kb_pipeline)
+        if investigation is not None and investigation.kb_retriever is None:
+            investigation = dataclasses.replace(investigation, kb_retriever=kb_pipeline.retriever())
+
     # 调查入口路由（issue 07 / M3-T7）：组件缺省 None → /investigate 落 503；
     # opening_builder 缺省按 context 配置组装 D-17 卡片（时间锚 last_fired_at）
     if investigation is None:
@@ -119,22 +137,6 @@ def create_app(  # noqa: PLR0913, PLR0917 — 注入面持续增长（M2 classif
     if investigation.opening_builder is None:
         investigation = _with_default_opening_builder(investigation, context_config, context_client)
     app.include_router(create_investigation_router(engine, investigation))
-
-    # 确认门路由（M5 issue 04 / T4 / D-40/D-48）：执行器/验证器缺省 None →
-    # confirm approve 落 503 降级（proposal 留 approved 即终）；GET 查询照常可用
-    if remediation is None:
-        remediation = RemediationDeps()
-
-    # 知识库装配（M6-T4 / D-51–D-57）：env 开关缺省关——关闭时 kb_pipeline 为
-    # None（/kb/ingest 落 503、query_kb 落 stub、开局召回不启用），既有测试零影响
-    kb_enabled = os.environ.get(KB_ENABLED_ENV, "").strip().lower() in {"1", "true", "yes"}
-    if kb_enabled and kb_pipeline is None:
-        kb_pipeline = _kb_pipeline_from_env(engine)
-    if kb_pipeline is not None:
-        # D-56：recovered 后同步触发入库（best-effort，失败落日志不阻塞处置出口）
-        remediation = dataclasses.replace(remediation, kb_pipeline=kb_pipeline)
-        if investigation is not None and investigation.kb_retriever is None:
-            investigation = dataclasses.replace(investigation, kb_retriever=kb_pipeline.retriever())
     app.include_router(create_remediation_router(engine, remediation))
     app.include_router(create_kb_router(engine, kb_pipeline))
 

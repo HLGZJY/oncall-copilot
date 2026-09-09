@@ -21,6 +21,7 @@ status 枚举冻结不扩——status ≠ investigating 仍允许调查，报告
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
@@ -64,6 +65,9 @@ REPORT_KEYS = frozenset(
         "hypotheses",
     }
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _reused_report_body(session: Session, reused_from: int) -> dict[str, Any]:
@@ -181,7 +185,9 @@ def create_investigation_router(engine: Engine, deps: InvestigationDeps) -> APIR
                     run_session, replace(deps.components, evidence=repo), opening=opening
                 )
                 repo.finalize(result, finished_at=deps.components.now())  # 终态写行（D-34）
-            except Exception as exc:  # harness 非预期异常：API 层兜底不泄漏堆栈
+            except Exception as exc:  # harness 非预期异常：API 层兜底不泄漏堆栈，
+                # 但堆栈必须落日志（T7 e2e 教训：吞成 500 后故障不可诊断）
+                logger.exception("调查执行非预期异常（incident_id=%s）", req.incident_id)
                 raise HTTPException(
                     status_code=500, detail="调查执行发生非预期异常，已中止"
                 ) from exc

@@ -1,8 +1,8 @@
 ---
 title: "M6 报告与知识库（闭环报告 + RAG 历史召回）：设计与开发计划"
-summary: "兑现 D-23 query_kb stub 为真实 RAG：结构化事故报告（时间线/根因/处置/改进建议）读库拼装 → 章节切块向量化入库（Chroma + SQLite 第九表权威）→ 新调查开局确定性召回历史案例作参考证据（知识污染三道防线）；缓存重复问题判定边界；G1–G9 开放点评审与 T1–T7 拆票预告"
+summary: "M6 已落地（T1–T7，2026-09-09 implemented）。兑现 D-23 query_kb stub 为真实 RAG：结构化事故报告（时间线/根因/处置/改进建议）读库拼装 → 章节切块向量化入库（Chroma + SQLite 第九表权威）→ 新调查开局确定性召回历史案例作参考证据（知识污染三道防线）；缓存重复问题判定边界；G1–G9 开放点评审与 T1–T7 拆票预告"
 source: docs/prd.md §4/§7-M6 + docs/architecture/architecture.md §3.3/§4/§5 + docs/design/decisions.md D-08/19/23/28/31/35/36/39-48 + docs/design/m5-remediation-gates-design.md（设计文档形制模板）+ src/oncall/harness/tools/registry.py（query_kb stub 现状接缝）+ src/oncall/api/investigation.py（build_report / report.md 出口）+ docs/reference/_sources/项目信息.md 3.3 模块 E（只回溯：知识沉淀六步流程）+ 评审标准来源（见「评审依据」R1–R5）
-status: draft
+status: implemented
 updated: 2026-09-09
 read_when: 评审 M6 方案时；进入 M6 开发前；被问「RAG 在 Agent 里怎么用/知识污染怎么防/缓存重复怎么判」时
 ---
@@ -13,7 +13,7 @@ read_when: 评审 M6 方案时；进入 M6 开发前；被问「RAG 在 Agent �
 
 `draft`（草案，讨论中）→ `reviewed`（评审通过，可拆票）→ `implemented`（已落地，验收回填）→ `superseded`（被后续设计取代，注明替代文档链接）
 
-- **当前状态**：`reviewed`（2026-09-09 G1–G9 评审定案——用户逐条拍板，全部采纳推荐默认解；定案已登记 `decisions.md` D-49–D-57，新术语已入 `CONTEXT.md`；tracker 已建 `.scratch/m6-report-kb/`）
+- **当前状态**：`implemented`（2026-09-09 T1–T7 全部落地，验收节实测回填完毕；上一状态 `reviewed`（2026-09-09 G1–G9 评审定案——用户逐条拍板，全部采纳推荐默认解；定案已登记 `decisions.md` D-49–D-57，新术语已入 `CONTEXT.md`；tracker 已建 `.scratch/m6-report-kb/`））
   - 上一状态 `draft`（2026-09-09 草案完成，提交 `ff99659`）
 - **评审人 / 评审日期**：用户逐条拍板（G1–G9 全部采纳推荐默认解），2026-09-09；评审依据由 AI 检索官方标准提供（R1–R5，含 URL 与取用日期 2026-09-09），用户保留推翻权（推翻须回退 `draft` 并重开对应 issue）
 - **设计期口径**：本票零写码、零建表、零真实调用。报告拼装是确定性读库行为（mock 即可测）；embedding 真实调用与「复现同一故障第二次首步引用历史案例」真实 e2e 需**本地 embedding 模型 + 活 demo 栈**（环境门槛，非 key 门槛——改进建议 LLM 润色是唯一可能涉 key 的面，见 G2）；设计期一律 mock。
@@ -126,12 +126,12 @@ M5 恢复验证通过 → incident 翻 mitigated（D-40 链路）
 > 可实测、可判定；实测后回填打勾，不得虚构。设计期 mock-only（MockEmbedder 确定性向量），真实召回 e2e 留 T7（环境门槛：本地 embedding 模型下载 + 活 demo 栈复现同故障两遍，开工前需用户确认）。
 
 - [x] **闭环报告五节齐全且禁虚构**（PRD §7-M6）：时间线节逐条可回溯 alert_events 行 id、根因节 = confirmed hypotheses + supporting steps、处置节 = remediation_proposals 全链、建议节门控输出——单测断言报告文本中每个数据点可经 `source_meta_json` 锚点回查库行（T 期实现票）
-- [ ] **复现同一故障第二次，首步即引用历史案例**（PRD 验收硬口径，可录屏为亮点）：mock 侧——已绿（test_kb_recall 两通道 + test_investigation_api reused_from 出口确定性断言）；真实侧——活栈同故障注入两遍，第二遍报告含 kb 引用（T7，环境门槛，实测后回填）
+- [x] **复现同一故障第二次，首步即引用历史案例**（PRD 验收硬口径，可录屏为亮点）：mock 侧——已绿（test_kb_recall 两通道 + test_investigation_api reused_from 出口确定性断言）；真实侧——**T7 实测通过（2026-09-09，slow-sql 活栈两遍）**：第二遍开局召回指纹精确命中缓存复用出口 `reused_from=11`（复用出口耗时 0.2s，不重查不建新调查）；向量参考通道真实得分/耗时 retriever.search 实测：Top-3 = 0.6815 / 0.6345 / 0.6277（sections: opening_card/remediation/timeline，全部命中源事件 11），单次召回 0.151s（bge-small-zh-v1.5 本地 CPU 512 维）。实测明细落 `.scratch/tmp/m6-07-real-recall-e2e.json` + issue 07 Comments
 - [x] **指纹精确命中走缓存复用不走重查**：同指纹（D-14 口径）+ 既有 mitigated 闭环 → 新告警不建新调查、出口 `reused_from` 关联既有报告；指纹未命中但向量相似 → 正常开调查只作参考（单测断言两条路径互斥，G9）
 - [x] **知识污染三道防线可机械断言**：①未实证（investigating/escalated）事件入库调用被拒（G8 门槛测试）；②kb 证据单独不能证实假设（Verifier 规则层单测：仅 kb 支撑的假设证实被拒并提示补本源证据）；③重复调查覆盖 investigations 旧行时 kb 旧块同步 superseded（覆盖语义测试）
 - [x] **D-23 冻结面不破**：六工具集合、`QueryKbInput{query, top_k}` 形状、`ToolResult` 形状、loop 主循环结构不变（import + 键集合断言，M5 `test_m5_frozen_face` 同款形制）；未注入检索函数时 query_kb 维持 unavailable stub（既有测试零回退）
 - [x] **全量门禁只增不减**：pytest（基线 **682 passed / 12 skipped** → T6 实测 **710 passed / 12 skipped**，+28 全为 M6 新增）+ ruff 双检全绿 + bandit（-c pyproject.toml）全绿，coverage ≥80%（harness 单独 ≥85%）；import-linter 本地环境组合沿用 M5 注记（grimp 中途异常），C3–C6 由 AST 守卫测试（test_architecture_guards）同等机械覆盖全绿；「首步即引用」真实侧留 T7 环境门槛票
-- [ ] **真实召回 e2e 回填**（T7）：同故障两遍的召回命中/得分/耗时如实回填验收节与 issue Comments（禁虚构）；设计文档翻 `implemented`、D-49+ 落位核对、架构 §4 回写（第九表 + 时序图 M6 落点）核对
+- [x] **真实召回 e2e 回填**（T7，2026-09-09）：同故障两遍的召回命中/得分/耗时已回填验收节与 issue Comments（禁虚构）；设计文档翻 `implemented`、D-49–D-57 落位核对完成、架构 §4 第九表/时序 M6 落点核对无误。**T7 顺带抓出并修复 T4 装配顺序缺陷**：`create_app` 调查路由注册先于 kb wiring，路由闭包捕获 replace 前 deps（kb_retriever=None），接线面下开局召回失明——回归测试 `test_kb_pipeline_wiring_via_create_app_enables_reuse`（红→绿）
 
 ## 依赖
 
