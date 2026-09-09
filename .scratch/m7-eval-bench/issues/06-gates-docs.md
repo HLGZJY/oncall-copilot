@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: 05
 
 # 06 Makefile/CI 回归收口 + 架构回写 + 文档

@@ -104,6 +104,7 @@ read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增
 | 评测运行 / Eval Run | 评测台对单个剧本的一次执行明细：`eval_runs` 表一行（剧本/集合/模型/遍次/判定/失败模式/步数/耗时/成本/judged_by/复用与 escalated 标记），与 `investigations` 会话记录分表不混（D-58–D-65） | 评测记录（与调查记录混淆时） |
 | 判对错两级 / Two-tier Judging | 硬规 7 口径：规则匹配（根因关键词 + 假设规范化比对）兜底全量 → LLM-as-judge 只复核规则未命中样本（judge 与被评模型解耦防自评）→ 人工抽检 20%；judged_by 三值 `rule/judge/human` 落 eval_runs | 自动评分（掩盖人工环节） |
 | 复用命中率 / Reuse Hit Rate | 指纹复用出口（`reused_from`，D-57）命中行占可复用机会的比例，**单列不计入 Top-1/Top-3 命中分母**——缓存有效性指标，与调查质量指标口径分离 | 缓存命中率（与 kb hit_count 混称） |
+| 判定不一致 / Unstable | 同剧本同模型 N 遍判定（verdict）不一致 → 该组 `unstable` 单列标注（D-61），**不静默平均**——报告行带 unstable 标记需人工复核后采信 | 抖动（掩盖判定分歧） |
 
 ## 五、可观测
 

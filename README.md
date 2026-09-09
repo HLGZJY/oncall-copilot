@@ -115,6 +115,19 @@ make test
 
 **演练录屏**：（占位，待黄金集采集完成后录制）
 
+## 评测（M7）
+
+一键回归（mock 档，零真实 API 调用，与 CI eval-regression job 同源）：
+
+```bash
+make eval          # 2 profile × 12 dev 剧本 × 3 遍矩阵，双产物落 datasets/eval/
+make eval-real     # 真实档：须显式 ONCALL_RUN_M7_EVAL=1（跑批与档位回填随 M7 issue 07）
+```
+
+产物：`datasets/eval/runs-<date>.json`（机器可读，携带 eval_runs 行 id 可 SQL 抽验回溯）+ `report-<date>.md`（人读矩阵表）；`eval_runs` 表是明细权威（D-62），导出是序列化副本。判定走两级判对错（规则匹配 → LLM-as-judge，硬规 7）；同组判定不一致 `unstable` 单列不静默平均。设计口径见 `docs/design/m7-eval-bench-design.md`。
+
+**矩阵报告挂图**：（占位，归 M8——真实档跑批完成后出图）
+
 ## 文档导航
 
 | 你想了解 | 去哪看 |

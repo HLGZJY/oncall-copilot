@@ -8,7 +8,7 @@ COMPOSE := $(shell docker compose version >/dev/null 2>&1 && echo "docker compos
 PY ?= python
 API_URL ?= http://127.0.0.1:8000
 
-.PHONY: help up down demo-load inject cleanup collect-run test
+.PHONY: help up down demo-load inject cleanup collect-run test eval eval-real
 
 help:
 	@echo "make up                                    # 拉起全栈（demo + Prometheus/Loki/Grafana + 告警链路）"
@@ -19,6 +19,8 @@ help:
 	@echo "make collect-run SCENARIO=04-downstream-timeout RUN=r1"
 	@echo "                                           # 黄金集单轮采集（issue 05 工具，注入→告警→清理→落档）"
 	@echo "make test                                  # ruff check + format 校验 + 全量 pytest"
+	@echo "make eval                                  # M7 mock 档评测矩阵（零真实调用，双产物落 datasets/eval/）"
+	@echo "make eval-real                             # M7 真实档（须 ONCALL_RUN_M7_EVAL=1；跑批归 issue 07）"
 
 up:
 	$(COMPOSE) up -d --build
@@ -64,3 +66,11 @@ test:
 	$(PY) -m ruff check .
 	$(PY) -m ruff format --check .
 	$(PY) -m pytest tests
+
+# M7 评测台一键入口（issue 06 / G1）：mock 档零真实调用，可进 CI；
+# 真实档只做 ONCALL_RUN_M7_EVAL=1 门槛校验（跑批归 issue 07）
+eval:
+	$(PY) -m oncall.eval.entry mock
+
+eval-real:
+	$(PY) -m oncall.eval.entry real

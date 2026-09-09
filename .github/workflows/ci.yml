@@ -70,12 +70,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: pip install -e ".[dev]"
-      # A5: M7 落地后启用——dev 黄金集回归；
-      # Top-1 跌幅 >10% 或成本涨幅 >50% 阻断（阈值在 eval/runner 内实现）
-      - name: golden set regression
-        run: |
-          if [ -d scenarios/dev ]; then
-            python -m oncall.eval.runner --suite scenarios/dev --gate regression
-          else
-            echo "scenarios/dev 尚未建立（M0/M7），评测门禁未启用"
-          fi
+      # A5: M7 issue 06 落地——mock 档黄金集回归（2 profile × 12 dev 剧本 × N=3，
+      # 零真实 API 调用，秒级；入口 src/oncall/eval/entry.py，与 make eval 同源）
+      - name: golden set regression (mock tier)
+        run: python -m oncall.eval.entry mock

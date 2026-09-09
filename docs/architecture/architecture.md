@@ -125,8 +125,6 @@ evidence_steps 证据: id, incident_id, step_no, thought, tool, input_json, outp
                      output_summary, tokens, cost, latency_ms, ts        ← 100% 落库
 hypotheses     假设: id, incident_id, text, status(confirmed/rejected/active),
                      supporting_steps[], against_steps[]
-eval_runs      评测: id, scenario_id, model, hit_top1, hit_top3, steps, duration_s,
-                     cost_cny, failure_mode, run_at
 remediation_proposals 处置提案: id, incident_id(FK, 一对多不加唯一), investigation_id(FK,
                      nullable——无产出调查的处置可建行), runbook_slug, action_id,
                      status(pending/approved/rejected/executing/recovered/failed/
