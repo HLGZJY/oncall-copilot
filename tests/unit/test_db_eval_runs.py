@@ -128,7 +128,7 @@ def test_eval_run_verdict_check_constraint(db: Session) -> None:
             run_idx=0,
             verdict="hit",
             judged_by="rule",
-        )  # noqa: E501
+        )
     )
     with pytest.raises(IntegrityError):
         db.flush()
@@ -145,7 +145,7 @@ def test_eval_run_judged_by_check_constraint(db: Session) -> None:
             run_idx=0,
             verdict="top1",
             judged_by="auto",
-        )  # noqa: E501
+        )
     )
     with pytest.raises(IntegrityError):
         db.flush()
