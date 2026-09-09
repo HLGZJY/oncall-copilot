@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03
 
 # 04 指标核算（五列 + 复用/escalated 单列）
