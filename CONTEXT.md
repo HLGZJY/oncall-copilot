@@ -100,7 +100,7 @@ read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增
 | 降噪率 / Denoise Rate | 降噪效果核心指标：(R − I) / R，R = Σ `dedup_count`（有效 firing 投递数，D-15 口径，不是行数），I = 判为 incident 的逻辑告警数；R=0 不除零，报告标注「无有效投递」（D-20） | 噪声过滤率、压缩比 |
 | 漏报 / Missed Alert | golden 标注 incident 的逻辑告警被判 false_positive 的数量，验收硬口径必须 = 0；risk 不算漏报（D-07 中间态），单列 risk_observed 观察（D-20） | 漏判、漏检 |
 | 误报误判 / False Alarm | golden 标注 false_positive 的逻辑告警被判 incident 的数量——「冤枉真告警」的另一半口径，与漏报相对，单列观察 | 误杀、反向漏报 |
-| 模型档案 / Model Profile | 矩阵对比中的被评模型抽象：只有名字与 env 前缀 `ONCALL_LLM_PROFILE_<NAME>_*`（尾词与既有 `ONCALL_LLM_*` 切换面同词汇），装配复用 `LLMClientConfig.from_env`——代码零硬编码模型名，档位随 key 门槛票实测回填（D-65/G8） | 模型配置（与模型名混淆时） |
+| 模型档案 / Model Profile | 矩阵对比中的被评模型抽象：只有名字与 env 前缀 `ONCALL_LLM_PROFILE_<NAME>_*`（尾词与既有 `ONCALL_LLM_*` 切换面同词汇），装配复用 `LLMClientConfig.from_env`——代码零硬编码模型名（D-65/G8）。**实测档案（2026-09-09，issue 07 dev 全集 12×2×3）：k2-6 = kimi-k2.6（¥0.125/次，均值 100.8s，Top-1 0/36）｜k3 = kimi-k3（¥0.282/次，均值 81.0s，Top-1 0/36）｜judge = kimi-k2.7-code（¥0.008/次）；全 miss 主因 = planner 依赖 query_kb 支撑被 M6-T5 防线拦截（54/72） + 畸形输出（9）+ 超时（8），结论受 harness 证据面/防线交互支配，档位质量差异不可分（D-66/D-69）** | 模型配置（与模型名混淆时） |
 | 评测运行 / Eval Run | 评测台对单个剧本的一次执行明细：`eval_runs` 表一行（剧本/集合/模型/遍次/判定/失败模式/步数/耗时/成本/judged_by/复用与 escalated 标记），与 `investigations` 会话记录分表不混（D-58–D-65） | 评测记录（与调查记录混淆时） |
 | 判对错两级 / Two-tier Judging | 硬规 7 口径：规则匹配（根因关键词 + 假设规范化比对）兜底全量 → LLM-as-judge 只复核规则未命中样本（judge 与被评模型解耦防自评）→ 人工抽检 20%；judged_by 三值 `rule/judge/human` 落 eval_runs | 自动评分（掩盖人工环节） |
 | 复用命中率 / Reuse Hit Rate | 指纹复用出口（`reused_from`，D-57）命中行占可复用机会的比例，**单列不计入 Top-1/Top-3 命中分母**——缓存有效性指标，与调查质量指标口径分离 | 缓存命中率（与 kb hit_count 混称） |

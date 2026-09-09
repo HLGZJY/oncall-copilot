@@ -197,15 +197,34 @@ def write_report(
     out_dir: Path | str = EVAL_DIR,
     *,
     generated_at: datetime | None = None,
+    judge_summary: dict[str, Any] | None = None,
 ) -> tuple[Path, Path]:
-    """G5 双产物落盘：`runs-<YYYYMMDD>.json` + `report-<YYYYMMDD>.md`。"""
+    """G5 双产物落盘：`runs-<YYYYMMDD>.json` + `report-<YYYYMMDD>.md`。
+
+    `judge_summary`：judge client 批级聚合（共享 client 的 usage_log 是全批
+    累计，逐行复制会虚增 36 倍——2026-09-09 实测教训，批级口径才不虚构）。
+    """
     stamp = (generated_at or datetime.now(UTC)).strftime("%Y%m%d")
     directory = Path(out_dir)
     directory.mkdir(parents=True, exist_ok=True)
     report = build_matrix_report(rows, generated_at=generated_at or datetime.now(UTC))
+    if judge_summary is not None:
+        report["judge_usage_real"] = judge_summary
 
     json_path = directory / f"runs-{stamp}.json"
     json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     md_path = directory / f"report-{stamp}.md"
-    md_path.write_text(render_markdown(report), encoding="utf-8")
+    md_text = render_markdown(report)
+    if judge_summary is not None:
+        md_text += (
+            "\n## Judge 批级用量（实测）\n\n"
+            f"- calls: {judge_summary.get('calls')}\n"
+            f"- tokens: prompt {judge_summary.get('prompt_tokens')} / "
+            f"completion {judge_summary.get('completion_tokens')} "
+            f"(total {judge_summary.get('total_tokens')})\n"
+            f"- latency: {judge_summary.get('latency_seconds')}s\n"
+            f"- cost: ¥{judge_summary.get('cost_cny')}\n"
+            f"- price_env: {judge_summary.get('price_env')}\n"
+        )
+    md_path.write_text(md_text, encoding="utf-8")
     return json_path, md_path

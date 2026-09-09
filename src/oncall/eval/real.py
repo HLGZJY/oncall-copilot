@@ -222,6 +222,8 @@ def run_eval_real(  # noqa: PLR0913 —— 真实档装配面 = 矩阵五参 + �
             db_session=session,
             n_runs=n_runs,
         )
+        # judge client 全批共享，usage_log 是累计值——只在批级聚合一次
+        # （逐行复制快照曾虚增 36 倍，2026-09-09 实测教训）
         judge_usage = getattr(getattr(judge, "_client", None), "usage_log", None) or []
         judge_summary = _usage_real_of("ONCALL_JUDGE_LLM_", judge_usage) if judge_usage else None
         for row in rows:
@@ -231,10 +233,9 @@ def run_eval_real(  # noqa: PLR0913 —— 真实档装配面 = 矩阵五参 + �
             row.run_json = {
                 **(row.run_json or {}),
                 "usage_real": _usage_real_of(prefix, usages),
-                "judge_usage_real": judge_summary,
             }
         session.flush()
-        json_path, md_path = write_report(rows, out_dir)
+        json_path, md_path = write_report(rows, out_dir, judge_summary=judge_summary)
         if owns_session:
             session.commit()
         return rows, json_path, md_path
