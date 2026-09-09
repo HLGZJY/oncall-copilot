@@ -145,6 +145,13 @@ kb_chunks      知识块: id, incident_id(FK, 一对多), investigation_id(FK, n
                      ← M6 增补第九表（2026-09-09，G7/D-55；超八表规划的显式偏差已评审；
                      文本权威在本表（可 SQL 审计、可 join incidents 回溯），Chroma 只存
                      可重建的向量索引；入库门槛 = incident mitigated 实证（D-56））
+eval_runs      评测运行: id, scenario, the_set(dev/holdout), model(profile 名, env 驱动),
+                     run_idx, verdict(top1/top3/miss), failure_mode(六值+unknown, nullable),
+                     judged_by(rule/judge/human), step_count, duration_s, tokens, cost_cny,
+                     reused, escalated, unstable, run_json, created_at
+                     ← M7 增补第十表（2026-09-09，G5/D-62；超九表规划的显式偏差已评审；
+                     评测行与 investigations 会话记录分表不混——无 incident 外键、
+                     不参与调查事务；复用/escalated 单列口径 D-64，unstable 单列 D-61）
 ```
 
 设计约束：`evidence_steps.output_json` 存原始输出（可回溯），`output_summary` 存进上下文的摘要——**两个都要有**（Anthropic："不能只存摘要"）。组件不可变、构造时校验；`InvestigationSession` 是唯一可变状态对象（OpenHands 原则），序列化即断点恢复工件。

@@ -81,10 +81,12 @@ class TestFieldContract:
     def test_tables_match_m4_scope(self, engine):
         """M1 建 alert_events，M2（issue 04）按 D-19 增建 incidents，
         M4（m4 issue 01）按 D-31 增建 investigations/evidence_steps/hypotheses，
-        M5（m5 issue 03）按 D-46 增建 remediation_proposals；
-        scenarios/eval_runs 不越界（前沿断言随建表里程碑演进，M2 先例）。"""
+        M5（m5 issue 03）按 D-46 增建 remediation_proposals，
+        M7（m7 issue 01）按 D-62 增建 eval_runs（在 db/eval_models.py）；
+        前沿断言随建表里程碑演进（M2 先例）。"""
         assert sorted(inspect(engine).get_table_names()) == [
             "alert_events",
+            "eval_runs",
             "evidence_steps",
             "hypotheses",
             "incidents",

@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM 模型（alert_events + incidents + M4 证据链三表；scenarios/eval_runs 不越界）。"""
+"""SQLAlchemy ORM 模型（M1–M6 主表；M7 第十表 eval_runs 拆在 `eval_models`，C6 门禁）。"""
 
 from __future__ import annotations
 

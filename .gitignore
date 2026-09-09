@@ -51,3 +51,6 @@ $RECYCLE.BIN/
 
 # 本地工作明细（派工 prompt / e2e 实测 json），按 M5 先例不进版本库
 .scratch/tmp/
+
+# 仓库损毁取证遗留（2026-09-09，勿提交勿删除）
+.git-broken-20260909/
