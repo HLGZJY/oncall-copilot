@@ -57,6 +57,9 @@ read_when: 命名拿不准时；写 issue / 测试名 / 提交信息时；新增
 | 调查收尾结构 / Investigation Result | 主循环终止时返回的收尾结构：incident 锚点 + 终态 + 结论 + `failure_mode` 六值归类 + 步数/tokens/成本合计 + 证据步与假设终态快照；M7 评测矩阵列的直接来源（D-28） | 结果对象 |
 | 调查报告 / Investigation Report | `POST /investigate` 产出、经 `GET /investigations/{incident_id}` 可查的证据链 JSON（issue 07）：steps / hypotheses / conclusion / confidence（照 agent-loop-design §数据形状）+ termination / failure_mode / 成本汇总 / opening_card（开局锚点 = `alert_ids[0]` 的 D-17 卡片，时间锚 `last_fired_at`）；进程内报告注册表持有，同 incident 重复调查覆盖旧报告，M4 落库后换读表（D-25/D-28）；escalated 报告同经此出口 | 调查结果（与收尾结构混淆）、报告对象 |
 | 调查记录 / Investigation Record | `investigations` 表一行——一次调查的会话级落库（终态/stop_reason/结论/failure_mode/步数/成本合计），incident 1:1 重复调查覆盖旧行（D-31）；M7 `eval_runs` 是评测行，不与此混表 | 会话记录、报告行 |
+| 闭环报告 / Closed-Loop Report | M6 出口：时间线/根因/处置/改进建议五节（含开局卡片摘要）——**读库确定性拼装、禁虚构**（每数据点经 `kb_chunks.source_meta_json` 锚点可回溯库行）；升级 M4 `report.md` 最小版（D-36），不落报告表、不扩 investigations 冻结面 | 事故报告（泛称）、总结报告 |
+| 知识块 / KB Chunk | 闭环报告按章节切出的入库单元（`kb_chunks` 第九表一行：opening_card/timeline/root_cause/remediation/suggestions 五类 section）——文本权威在 SQLite，Chroma 只存可重建的向量索引；入库门槛 = incident `mitigated` 实证（未实证永不入库，知识污染第一道防线） | 知识条目、文档片段、embedding 记录 |
+| 开局召回 / Opening Recall | 新调查开局的**确定性**相似历史检索（指纹精确命中 → 缓存复用出口；未命中 → 向量相似 → kb 块作 `source=kb` 参考证据节点随 opening 注入）——与 `collect_context`（D-16）同构的前置组装，**不是 Agent 步**、不占 15 步预算；循环内深查仍走 query_kb（Planner 自主，硬规 1） | 自动召回、RAG 前置注入 |
 | 证据仓库 / Evidence Repository | session→DB 的落库写入接缝（`db/evidence_repo.py`）：步进即写、每步一个事务、落库后行 id 回填供指针替换（D-33/D-25）；写失败不静默吞，熔断归类 `tool_error` | DAO、存储层、持久化层 |
 | 双通道编排 / Dual-Channel Orchestration | M2 的分类编排顺序（issue 04 / G4）：**规则通道先行（命中即直判落库）→ 未决行进 LLM 通道 → 同一事务落 `classification_json` + status 翻 classified**；只由独立入口 `POST /classify` 触发，不串联 `/ingest`（R6）；已 classified 行跳过（幂等） | 分类流水线、串联分类 |
 | few-shot 样本池 / Few-Shot Pool | LLM 通道 prompt 的示例样本集合：loader 只从 `datasets/golden/dev/` 取、按 golden 可选 `classification` 字段分组（缺省 incident）、每态 K 条；确定性产出（场景名字典序） | 示例库、模板池 |
