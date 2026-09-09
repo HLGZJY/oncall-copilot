@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02, 04
 
 # 05 N 遍矩阵 + 模型 profile 矩阵 + 报告双产物
@@ -11,9 +11,9 @@ Blocked by: 02, 04
 
 ## 验收
 
-- [ ] mock 档 2 profile × 12 剧本 × 3 遍矩阵产出单测绿
-- [ ] 报告每个数字可回溯 eval_runs 表行（禁虚构口径）抽验绿
-- [ ] 全量 pytest 只增不减 + ruff 双检绿
+- [x] mock 档 2 profile × 12 剧本 × 3 遍矩阵产出单测绿（`run_matrix` 2×2×3 同构验证 + `run_scenario` 实跑）
+- [x] 报告每个数字可回溯 eval_runs 表行（禁虚构口径）抽验绿（每组携带 run_ids）
+- [x] 全量 pytest 只增不减 + ruff 双检绿（785 collected = 772 基线 + 13 新增）
 
 ## Comments
 
