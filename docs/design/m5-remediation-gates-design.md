@@ -13,7 +13,7 @@ read_when: 评审 M5 方案时；进入 M5 开发前；被问「写操作怎么�
 
 `draft`（草案，讨论中）→ `reviewed`（评审通过，可拆票）→ `implemented`（已落地，验收回填）→ `superseded`（被后续设计取代，注明替代文档链接）
 
-- **当前状态**：`reviewed`（2026-09-09 G1–G10 评审定案——用户逐条拍板，全部采纳推荐默认解；定案已登记 `decisions.md` D-39–D-48，新术语已入 `CONTEXT.md`）
+- **当前状态**：`implemented`（2026-09-09 T8 真实 e2e 与收尾完成——活 demo 栈 2 剧本端到端处置恢复实测通过，验收节回填打勾；上一状态 `reviewed`（2026-09-09 G1–G10 评审定案——用户逐条拍板，全部采纳推荐默认解；定案已登记 `decisions.md` D-39–D-48，新术语已入 `CONTEXT.md`））
   - 上一状态 `draft`（2026-09-09 草案完成，提交 `5532286`；docs/README 索引行随草案新增 `888ae37`）
 - **评审人 / 评审日期**：用户逐条拍板（G1–G10 全部采纳推荐默认解），2026-09-09；评审依据由 AI 检索官方标准提供（R1–R5，含 URL 与取用日期），用户保留推翻权（推翻须回退 `draft` 并重开对应 issue）
 - **关联 issue**：`.scratch/m5-remediation-gates/`（spec.md + issues/01–08，与 T1–T8 一一对应；2026-09-09 拆票完成，T1–T7 全部 `ready-for-agent`，T8 `ready-for-agent` 附 demo 栈就绪门槛）
@@ -128,15 +128,27 @@ read_when: 评审 M5 方案时；进入 M5 开发前；被问「写操作怎么�
 
 > 可实测、可判定；实测后回填打勾，不得虚构。设计期 mock-only（处置管线无 LLM，mock 决策脚本驱动 Planner），真实 demo 端到端留 T8（环境门槛：活 demo 栈，开工前需用户确认）。
 
-- [ ] **2 剧本端到端自动处置恢复**（PRD §7-M5 硬口径）：`cpu-spike` + `slow-sql`（G9 选型）在活 demo 栈注入故障 → mock 决策调查 → execute_action 干跑 → 人工 confirm → 受控执行 → 恢复验证通过 → incident 翻 mitigated——真实 e2e 断言（T8，demo 栈就绪门槛；mock 侧全链路已由 issue 07 mock e2e 收口）
+- [x] **2 剧本端到端自动处置恢复**（PRD §7-M5 硬口径）：`cpu-spike` + `slow-sql`（G9 选型）在活 demo 栈注入故障 → mock 决策调查 → execute_action 干跑 → 人工 confirm → 受控执行 → 恢复验证通过 → incident 翻 mitigated——真实 e2e 断言（T8 实测：2 剧本均 proposal `recovered` + incident `mitigated`，`tests/integration/test_m5_real_e2e.py`，环境开关 `ONCALL_RUN_M5_REAL_E2E=1`；实测数据见下方「真实 e2e 回填」行与 issue 08 Comments；mock 侧全链路已由 issue 07 mock e2e 收口）
 - [x] **写操作 100% 过确认门**（PRD §4「安全处置」）：全测试内无任何 execute_action 直接执行路径——所有写命令必经「干跑渲染 → pending → 人工 approve → 白名单校验 → 执行」；确认前系统不产生任何 demo 侧副作用（实测：状态机迁移表键集合断言 pending 无执行出边 + 循环内干跑替身执行器零调用 + reject/终态再 confirm 409；`test_m5_frozen_face` + `test_m5_acceptance_gates`，T7）
 - [x] **干跑不落地**（第 1 门）：execute_action 调用后 demo 侧状态零变化（指标/进程/容器快照比对），ToolResult 返回命令清单+影响面+proposal_id（实测：`test_m5_acceptance_gates::test_dry_run_only_no_side_effects_and_toolresult_shape`——替身执行器零调用 + proposal pending + params_json 空 + dry_run_json 与 ToolResult 预览 deep-equal，T7；部件级 issue 02 单测）
 - [x] **恢复验证判恢复/未恢复**（第 4 门）：runbook verification PromQL 回查——恢复路径 proposal 收尾 `recovered` + incident 翻 mitigated；未恢复路径自动执行 rollback 后仍失败 → 转人工（proposal 落 `escalated`、incident 保持 investigating，D-28）——mock 验证器断言两条路径（实测：恢复侧 `test_m5_acceptance_gates::test_full_audit_trail_field_by_field`（mitigated）+ 未恢复侧 `test_m5_mock_e2e::test_mock_e2e_slow_sql_not_recovered_rollback_escalated`（escalated + investigating，$session_id 经 runtime_values 注入回滚）；两条路径部件级 issue 06 单测，T7）
 - [x] **全程留痕**（PRD「过程可信」延伸）：proposal 行含干跑 JSON（= 被批准的命令清单）、确认 decision/reason/时间、执行输出摘要、验证结果、回滚状态；执行器的每条白名单命令均落审计（含校验前后参数）——单测断言（实测：`test_m5_acceptance_gates::test_full_audit_trail_field_by_field` 逐字段对账——dry_run_json deep-equal（D-39）+ decision/confirm_reason/confirmed_at/executed_at/finished_at + params_json["execution"] issue 05 审计形状 + verify_result_json issue 06 形状；escalated 落点 rollback_status=rolled_back、verify_result_json 不落，T7）
 - [x] **命令白名单拒绝越权**（第 3 门 + 硬规 3）：白名单外命令/参数（如任意 docker rm、shell 元字符注入样本）在执行器层被拒并留审计，runbook 引用不存在动作 → 拒绝加载——单测断言（实测：`test_m5_command_gates`——注入样本（`;|` 元字符/白名单外动作/多余参数）执行器层 4 拒零执行留审计；runbook action/rollback 引用白名单外原子操作 RunbookValidationError 拒载；部件级 issue 01/05 单测，T7）
 - [x] **D-23 冻结面不破**：六工具集合、`ExecuteActionInput` 形状、`ToolResult` 形状、loop 主循环结构不变（import + 键集合断言）；`EvidenceStep`/`Hypothesis`/`InvestigationSession` 契约不倒改（D-25）（实测：`test_m5_frozen_face`——六工具集合/入参返回形状/ORM 冻结列/Session 字段精确键集合断言（M4 先例形制）；loop.py 零净增由 G1 主线保证 + 架构守卫 C6，T7）
-- [ ] **全量门禁只增不减**：pytest（基线 541 passed / 10 skipped 只增不减）+ ruff check + ruff format --check + import-linter C3–C6 + A6 bandit 全绿，coverage ≥80%（harness 单独 ≥85%）（T7 实测：**679 passed / 10 skipped**——票面 541/10 系 M3 末期旧值，issue 06 后真值 667/10；ruff 双检 + import-linter C3–C6 kept + bandit 全绿；coverage 归 T8 收尾统一出数）
-- [ ] **真实 e2e 回填**（T8）：2 剧本处置耗时/执行命令数/恢复窗口如实回填验收节与 issue Comments（禁虚构）；设计文档翻 `implemented`、D-39+ 落位核对、架构 §4 回写预告核对
+- [x] **全量门禁只增不减**：pytest（基线 541 passed / 10 skipped 只增不减）+ ruff check + ruff format --check + import-linter C3–C6 + A6 bandit 全绿，coverage ≥80%（harness 单独 ≥85%）（T8 实测：**682 passed / 12 skipped**，coverage **97.75%**——T7 基线 679/10 只增不减（+3 passed = T8 新增轮询验证器单测；+2 skipped = T8 新增 2 个活栈真实 e2e，环境开关默认跳过）；ruff 双检 + bandit 全绿；import-linter **C3 KEPT**，C4+C5 契约检查在当前环境组合（import-linter 2.15 + grimp 3.17）中途异常无结论——环境漂移如实注记，C4/C5 由 AST 守卫 `test_no_bare_http_clients` / `test_no_scattered_llm_sdks` 同等机械覆盖全绿（`docs/conventions/quality-gates.md` 即此双保险设计））
+- [x] **真实 e2e 回填**（T8）：2 剧本处置耗时/执行命令数/恢复窗口如实回填验收节与 issue Comments（禁虚构）；设计文档翻 `implemented`、D-39+ 落位核对、架构 §4 回写预告核对
+
+### 真实 e2e 实测回填（T8，2026-09-09 活 demo 栈，mock 决策零 LLM）
+
+| 剧本 | 终态 | 告警触发等待 | 处置耗时（confirm 同步链） | 执行命令数 | 恢复窗口（回查轮询口径） | 恢复验证 |
+|---|---|---|---|---|---|---|
+| cpu-spike | recovered + incident mitigated | 65.5s | 121.9s | 3（0 拒绝：rm 探针 / rm pumba / 恢复 cpuset=0-15） | 120.0s（9 次回查） | P95=0.045 ≤ 0.05，窗内 5 样本全满足 |
+| slow-sql | recovered + incident mitigated | 85.6s | 106.1s | 2（0 拒绝：rm 探针 / KILL 17983） | 105.0s（8 次回查） | pool_used=2.5 < 5，窗内 5 样本全满足 |
+
+- 恢复窗口口径：观察窗「回看 60s 全样本满足判据」，执行后立即回查必含故障期样本，故验证器外层在 harness 侧包轮询代理（生产代码零改动，15s 间隔、240s 预算），窗口干净即判恢复——与 G2「confirm 预算含验证窗口」一致。
+- **T8 真实发现 1**（已修，生产代码）：`allowlist.py` mysql.kill_session argv 模板缺 `-poncall`——真实 mysql 客户端 Access denied（rc=1），mock runner 永远测不出；同步修正 2 处单测断言。
+- **T8 真实发现 2**（已修，harness）：processlist 发现持锁会话的 SQL 会匹配到**自身连接**（info 含 '%SLEEP(%'），KILL 报 Unknown thread id——加 `id != CONNECTION_ID()` 排除。
+- 明细落 `.scratch/tmp/m5-08-real-e2e-report.json`（不进版本库）。
 
 ## 依赖
 
