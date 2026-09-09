@@ -127,8 +127,29 @@ def run_scenario(
     golden, spec = case.golden, case.spec
     rows: list[EvalRun] = []
     for run_idx in range(n_runs):
-        components = components_factory(golden, run_idx)
-        result, duration_s = _run_once(components, golden, run_idx)
+        try:
+            components = components_factory(golden, run_idx)
+            result, duration_s = _run_once(components, golden, run_idx)
+        except Exception as exc:  # 单格炸不炸全批（禁丢弃：error 行可审计）
+            # 2026-09-09 全量实测教训：M6-T5 知识污染防线 VerifierError 中途
+            # 炸批回滚 41 分钟真实 spend——每格必须有行，error 痕迹落 run_json
+            row = EvalRun(
+                scenario=spec.scenario,
+                the_set=spec.the_set,
+                model=spec.model,
+                run_idx=run_idx,
+                verdict="miss",  # CHECK 词汇内：异常按 miss 计（judged_by=rule 可追溯）
+                failure_mode="tool_error",
+                judged_by="rule",
+                step_count=0,
+                duration_s=0.0,
+                tokens=0,
+                cost_cny=0.0,
+                escalated=False,
+                run_json={"error": f"{type(exc).__name__}: {exc}"},
+            )
+            rows.append(row)
+            continue
         row = _to_row(spec, run_idx, result, duration_s)
         judgment = judger(golden, result)
         row.verdict = judgment.verdict

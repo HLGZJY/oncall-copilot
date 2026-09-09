@@ -32,7 +32,7 @@ from oncall.harness.permission import PermissionGate
 from oncall.harness.planner import MockPlanner, PlannerDecision
 from oncall.harness.tools.registry import ToolRegistry, register_six_tools
 from oncall.harness.tools.schemas import ToolResult, ToolStatus
-from oncall.harness.verifier import MockVerifierJudge, Verifier, VerifierVerdict
+from oncall.harness.verifier import MockVerifierJudge, Verifier, VerifierError, VerifierVerdict
 
 REAL_DEV = Path("datasets/golden/dev")
 
@@ -201,6 +201,38 @@ def test_unstable_flag_on_verdict_divergence():
         session.commit()
     assert len({row.verdict for row in rows}) > 1
     assert all(row.unstable for row in rows)
+
+
+# ── issue 07 全量跑批教训：单格异常不炸全批（禁丢弃：error 行可审计）──
+
+
+def test_single_run_crash_isolated_as_error_row():
+    """某遍 run_investigation 抛异常 → 记 error 行（miss/rule/tool_error）不中断其余遍。
+
+    2026-09-09 全量跑批实测：M6-T5 知识污染防线 VerifierError 中途炸批，
+    整事务回滚丢 41 分钟真实 spend——禁丢弃纪律要求每格都有痕迹。
+    """
+
+    def crashing_factory(golden: GoldenScenario, run_idx: int) -> LoopComponents:
+        if run_idx == 1:
+            raise VerifierError("假设仅由 query_kb（kb 参考证据）支撑，不可证实")
+        return _mock_factory(golden, run_idx)
+
+    with _db_session() as session:
+        rows = run_scenario(
+            case=ScenarioCase(golden=_golden(), spec=_spec()),
+            components_factory=crashing_factory,
+            judger=_stub_judger,
+            db_session=session,
+        )
+        session.commit()
+    assert [row.run_idx for row in rows] == [0, 1, 2]  # 三遍都有行，不丢格
+    error_row = rows[1]
+    assert error_row.verdict == "miss"
+    assert error_row.judged_by == "rule"
+    assert error_row.failure_mode == "tool_error"
+    assert "query_kb" in error_row.run_json["error"]  # 痕迹可回溯
+    assert rows[0].verdict == "top1" and rows[2].verdict == "top1"  # 好格不受污染
 
 
 # ── 验收②：真实档 env 门槛（D-58，M5 issue 08 惯例）──

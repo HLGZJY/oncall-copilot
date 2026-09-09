@@ -116,6 +116,7 @@ def run_matrix(  # noqa: PLR0913 —— 矩阵编排面 = runner 五参 + profil
                     n_runs=n_runs,
                 )
             )
+            db_session.flush()  # 逐 case 落 id：异常时已完格尽量保住（真实档 spend 保护）
     db_session.flush()  # 落 id：报告 run_ids 可回溯的前提
     return rows
 
