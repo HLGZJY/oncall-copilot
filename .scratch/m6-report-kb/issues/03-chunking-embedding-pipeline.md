@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 # chunking embedding pipeline
@@ -9,4 +9,4 @@ kb/chunking.py（五类 section 章节切块，块带 incident_id/section/seq）
 
 ## 验收（可机械判定）
 
-- [ ] pytest 绿：切块边界/数量/元数据断言；MockEmbedder 确定性（同文本同向量）；入库门槛拒绝未实证事件；覆盖同步 superseded；ruff/bandit 全绿
+- [x] pytest 绿：切块边界/数量/元数据断言；MockEmbedder 确定性（同文本同向量）；入库门槛拒绝未实证事件；覆盖同步 superseded；ruff/bandit 全绿
