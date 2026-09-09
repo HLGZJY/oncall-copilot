@@ -31,7 +31,7 @@ M5 处置与恢复验证（四道闸门）（W4 后半–W5 前半，PRD §7-M5�
 |---|---|---|---|---|
 | 01 | runbook 契约 + 解析器（runbook 库 2 源文件 + runbook.py 契约校验） | T1 / G5 / D-43 | — | resolved |
 | 02 | execute_action 干跑实装（registry 注入面 + 干跑 handler + PermissionGate 授权判定器） | T2 / G1/G3 / D-39/D-41 | 01 | resolved |
-| 03 | proposal 落库与状态机（第八表 + service 状态流转） | T3 / G8 / D-46 | 02 | ready-for-agent |
+| 03 | proposal 落库与状态机（第八表 + service 状态流转） | T3 / G8 / D-46 | 02 | resolved |
 | 04 | 确认门 API（confirm/reject + GET 处置查询） | T4 / G2 / D-40 | 03 | ready-for-agent |
 | 05 | 命令白名单 + 受控执行器（allowlist + executor + 执行审计） | T5 / G4 / D-42 | 03 | ready-for-agent |
 | 06 | 恢复验证 + 回滚（verifier + 未恢复 rollback + 转人工） | T6 / G6/G7 / D-44/D-45 | 05 | ready-for-agent |

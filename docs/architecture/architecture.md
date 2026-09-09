@@ -103,7 +103,7 @@ def investigation_loop(session: InvestigationSession) -> InvestigationResult:
 
 v1 单循环；预留两个演进点但不实现：① evaluator 分离（M7 评测台里的 LLM-as-judge 已是轻量版）；② 并行取证（只读工具可 parallel tool call，写操作永不并行）。
 
-## 4. 数据模型（SQLite 起步，六张核心表）
+## 4. 数据模型（SQLite 起步，八张核心表）
 
 ```
 scenarios      剧本: id, name, fault_type, inject_script, expected_root_cause, expected_action
@@ -127,6 +127,16 @@ hypotheses     假设: id, incident_id, text, status(confirmed/rejected/active),
                      supporting_steps[], against_steps[]
 eval_runs      评测: id, scenario_id, model, hit_top1, hit_top3, steps, duration_s,
                      cost_cny, failure_mode, run_at
+remediation_proposals 处置提案: id, incident_id(FK, 一对多不加唯一), investigation_id(FK,
+                     nullable——无产出调查的处置可建行), runbook_slug, action_id,
+                     status(pending/approved/rejected/executing/recovered/failed/
+                     rolled_back/escalated), dry_run_json(批准对象——创建即锁定,
+                     全路径不可变), params_json, decision(approve/reject), confirm_reason,
+                     confirmed_at, executed_at, verify_result_json, rollback_status,
+                     created_at, finished_at
+                     ← M5 增补第八表（2026-09-09，G8/D-46；超六表规划的显式偏差已评审；
+                     proposal 生命周期跨调查——pending 等确认发生在调查收尾后，
+                     锚 incident 不锚调查步，故不混入 evidence_steps/investigations）
 ```
 
 设计约束：`evidence_steps.output_json` 存原始输出（可回溯），`output_summary` 存进上下文的摘要——**两个都要有**（Anthropic："不能只存摘要"）。组件不可变、构造时校验；`InvestigationSession` 是唯一可变状态对象（OpenHands 原则），序列化即断点恢复工件。

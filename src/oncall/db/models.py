@@ -177,6 +177,61 @@ class EvidenceStep(Base):
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class RemediationProposal(Base):
+    """处置提案（D-46 第八表）：一次处置提案一行，锚 incident 一对多（可多次处置尝试）。
+
+    `dry_run_json` 是批准对象（D-39）：创建即锁定「将被批准执行的具体命令清单 +
+    影响面」，状态机任何路径不改写它，confirm/reject 用此渲染；
+    `investigation_id` 可空——无产出调查的处置也可建行（G8）；
+    生命周期跨调查（pending 等确认发生在调查收尾后），故不混入 evidence_steps
+    （锚调查步）/ investigations（会话级冻结，D-31）。
+    字段契约 = docs/design/m5-remediation-gates-design.md §数据模型变更（D-46）。
+    """
+
+    __tablename__ = "remediation_proposals"
+    __table_args__ = (
+        # D-46/D-40 八值状态集；CHECK 落 DB 层而非应用层（照 ck_incidents_status 先例）
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'executing', "
+            "'recovered', 'failed', 'rolled_back', 'escalated')",
+            name="ck_remediation_proposals_status",
+        ),
+        # confirm 落点仅 approve/reject 或 NULL（可选 CHECK，票面建议采纳）
+        CheckConstraint(
+            "(decision IN ('approve', 'reject')) OR decision IS NULL",
+            name="ck_remediation_proposals_decision",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    # 锚 incident（一对多，不加唯一约束——一次事故可多次处置尝试）；索引供
+    # `GET /remediations?incident_id=` 按事故查询
+    incident_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("incidents.id"), nullable=False, index=True
+    )
+    # 产出调查可空：无调查直接处置的路径（G8）
+    investigation_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("investigations.id"))
+    runbook_slug: Mapped[str] = mapped_column(String(64), nullable=False)
+    action_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    # 批准对象（D-39）：创建即有、全路径不可变（验收⑤）
+    dry_run_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    # 执行参数/上下文（05/06 写）；本票保证可落可读
+    params_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    # confirm 落点（D-40：approve/reject）
+    decision: Mapped[str | None] = mapped_column(String(16))
+    confirm_reason: Mapped[str | None] = mapped_column(Text)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # 恢复验证结果（06 写）
+    verify_result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    rollback_status: Mapped[str | None] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+
+
 class Hypothesis(Base):
     """假设（架构 §4 冻结列）：confirmed/rejected/active 三态（D-26 证伪导向）。
 
