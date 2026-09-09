@@ -45,6 +45,7 @@ class TestRenderAllowlisted:
             "oncall-demo-mysql-1",
             "mysql",
             "-uroot",
+            "-poncall",
             "-e",
             "KILL 42",
         ]

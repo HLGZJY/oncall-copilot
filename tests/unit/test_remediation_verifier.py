@@ -420,5 +420,14 @@ class TestRollbackOrchestration:
         _run_chain(engine, pid, executor=executor, verifier=verifier, runbooks=RUNBOOKS)
 
         assert argv_calls == [
-            ["docker", "exec", "oncall-demo-mysql-1", "mysql", "-uroot", "-e", "KILL 42"]
+            [
+                "docker",
+                "exec",
+                "oncall-demo-mysql-1",
+                "mysql",
+                "-uroot",
+                "-poncall",
+                "-e",
+                "KILL 42",
+            ]
         ]

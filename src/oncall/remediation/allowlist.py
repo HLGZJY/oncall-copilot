@@ -40,7 +40,9 @@ ATOMIC_ACTIONS: Final[dict[str, tuple[tuple[str, ...], dict[str, str]]]] = {
         {"cores": _CORES_RE, "container": _CONTAINER_RE},
     ),
     "mysql.kill_session": (
-        ("docker", "exec", "{container}", "mysql", "-uroot", "-e", "KILL {session_id}"),
+        # -poncall：demo 栈 root 凭据与 chaos 脚本一致——T8 真实 e2e 实测发现
+        # 缺密码时 mysql 客户端 Access denied（rc=1），mock runner 测不出真实认证
+        ("docker", "exec", "{container}", "mysql", "-uroot", "-poncall", "-e", "KILL {session_id}"),
         {"container": _CONTAINER_RE, "session_id": _SESSION_ID_RE},
     ),
 }
