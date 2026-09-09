@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
@@ -35,6 +35,9 @@ from oncall.remediation.executor import RemediationExecutor
 from oncall.remediation.verifier import RecoveryVerifier, run_confirm_chain
 
 __all__ = ["ConfirmRequest", "RemediationDeps", "create_remediation_router"]
+
+if TYPE_CHECKING:
+    from oncall.knowledge.pipeline import KnowledgePipeline
 
 
 @dataclass(frozen=True)
@@ -50,6 +53,9 @@ class RemediationDeps:
     executor: RemediationExecutor | None = None
     verifier: RecoveryVerifier | None = None
     runbooks: Mapping[str, Any] | None = None
+    # M6-T4（D-56）：恢复验证 recovered 后同步触发知识入库；None = 不启用
+    # （best-effort：入库失败落日志不阻塞处置出口——D-56 触发语义）
+    kb_pipeline: KnowledgePipeline | None = None
 
 
 class ConfirmRequest(BaseModel):
@@ -122,6 +128,17 @@ def create_remediation_router(engine: Engine, deps: RemediationDeps) -> APIRoute
                 )
             except service.ProposalStateError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
+            if deps.kb_pipeline is not None and row.status == "recovered":
+                # D-56：恢复实证（incident mitigated）后同步触发闭环报告入库；
+                # best-effort——失败落日志重试语义，不阻塞处置出口（D-56 触发注记）
+                try:
+                    deps.kb_pipeline.ingest_incident(row.incident_id, session)
+                except Exception as exc:
+                    import logging
+
+                    logging.getLogger(__name__).warning(
+                        "知识入库触发失败（incident_id=%s）：%s", row.incident_id, exc
+                    )
             return _serialize_proposal(row)
 
     @router.get("/remediations/{proposal_id}")

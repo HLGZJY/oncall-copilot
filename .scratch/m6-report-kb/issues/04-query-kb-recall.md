@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03
 
 # query kb recall
@@ -9,4 +9,4 @@ kb/retriever.py（QueryKbInput → 向量检索 → kb_hits[] 含 incident_id/se
 
 ## 验收（可机械判定）
 
-- [ ] pytest 绿：query_kb 注入后返回 ok + kb_hits、未注入维持 unavailable；缓存复用/向量参考两路径互斥断言；开局节点不占步数；D-23 冻结面（六工具集合/入参/ToolResult 形状）断言不变
+- [x] pytest 绿：query_kb 注入后返回 ok + kb_hits、未注入维持 unavailable；缓存复用/向量参考两路径互斥断言；开局节点不占步数；D-23 冻结面（六工具集合/入参/ToolResult 形状）断言不变

@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from oncall.knowledge.embedder import Embedder
     from oncall.knowledge.store import VectorStore
 
-__all__ = ["NotEligibleForIngestion", "KnowledgePipeline"]
+__all__ = ["KnowledgePipeline", "NotEligibleForIngestion"]
 
 
 class NotEligibleForIngestion(RuntimeError):
@@ -33,12 +33,22 @@ class NotEligibleForIngestion(RuntimeError):
 
 
 class KnowledgePipeline:
-    """入库管线：构造注入 embedder + store（测试 Mock，真实模型可注换）。"""
+    """入库管线：构造注入 embedder + store（测试 Mock，真实模型可注换）。
 
-    def __init__(self, engine: "Engine", embedder: "Embedder", store: "VectorStore") -> None:
+    `retriever()` 返回同 (embedder, store) 的检索器——query_kb handler 与开局
+    召回共用同一索引视图（组装点便捷面，避免双实例漂移）。
+    """
+
+    def __init__(self, engine: Engine | None, embedder: Embedder, store: VectorStore) -> None:
+        from oncall.knowledge.retriever import KbRetriever
+
         self._engine = engine
         self._embedder = embedder
         self._store = store
+        self._retriever = KbRetriever(engine, embedder, store)
+
+    def retriever(self) -> KbRetriever:
+        return self._retriever
 
     def ingest_incident(self, incident_id: int, session: Any) -> int:
         """拼装五节 → 切块 → 向量化 → 落权威表 + 向量索引；返回写入块数。

@@ -562,3 +562,85 @@ class TestGetMarkdownReport:
         resp = client.get(f"/investigations/{incident_id}/report.md")
 
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# M6-T4 / D-57：开局召回缓存复用出口（POST /investigate 行为扩展，契约不破）
+# ---------------------------------------------------------------------------
+
+
+class TestOpeningRecallReuse:
+    def test_fingerprint_canonical_hit_returns_reused_report_without_rerun(self):
+        """canonical 子集命中 + 源 mitigated → 复用既有报告（reused_from），不重查不建新调查。"""
+        from oncall.knowledge.embedder import MockEmbedder
+        from oncall.knowledge.pipeline import KnowledgePipeline
+        from oncall.knowledge.retriever import KbRetriever
+        from oncall.knowledge.store import InMemoryVectorStore
+
+        engine = _make_engine()
+        pipeline = KnowledgePipeline(engine, MockEmbedder(), InMemoryVectorStore())
+        with Session(engine) as session:
+            src_alert = AlertEvent(
+                fingerprint="fp-src",
+                source="alertmanager",
+                labels_json={"alertname": "DemoApiGwHighLatency", "job": "api-gw", "severity": "critical"},
+                annotations_json={},
+                fired_at=FIRED_AT,
+                status="deduped",
+            )
+            session.add(src_alert)
+            session.flush()
+            src_incident = Incident(alert_ids=[src_alert.id], status="mitigated")
+            session.add(src_incident)
+            session.flush()
+            session.add(
+                Investigation(
+                    incident_id=src_incident.id,
+                    status="concluded",
+                    conclusion="CPU 飙高",
+                    step_count=2,
+                )
+            )
+            session.commit()
+            pipeline.ingest_incident(src_incident.id, session)
+            session.commit()
+            # 新事件：不同指纹行（新时间窗桶）、同 canonical labels（同源故障再来）
+            new_alert = AlertEvent(
+                fingerprint="fp-new",
+                source="alertmanager",
+                labels_json={"alertname": "DemoApiGwHighLatency", "job": "api-gw", "severity": "critical"},
+                annotations_json={},
+                fired_at=FIRED_AT,
+                status="deduped",
+            )
+            session.add(new_alert)
+            session.flush()
+            new_incident = Incident(alert_ids=[new_alert.id], status="investigating")
+            session.add(new_incident)
+            session.commit()
+            new_id = new_incident.id
+            src_id = src_incident.id
+
+        retriever = KbRetriever(engine, MockEmbedder(), InMemoryVectorStore())
+        components = make_components(
+            MockPlanner(script=[conclusion_decision("不应被走到")]),
+        )
+        app = create_app(
+            engine, investigation=InvestigationDeps(components=components, kb_retriever=retriever)
+        )
+        client = TestClient(app)
+        resp = client.post("/investigate", json={"incident_id": new_id})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["reused_from"] == src_id
+        assert body["conclusion"] == "CPU 飙高"
+
+    def test_kb_reference_key_absent_without_kb_retriever(self):
+        """未注入 kb_retriever → 报告 JSON 无 kb_reference 键（D-35 契约不破）。"""
+        client, engine = _client_with_components(
+            make_components(MockPlanner(script=[conclusion_decision("收束")]))
+        )
+        incident_id, _ = _seed_incident(engine, status="investigating")
+        resp = client.post("/investigate", json={"incident_id": incident_id})
+        assert resp.status_code == 200
+        assert "kb_reference" not in resp.json()

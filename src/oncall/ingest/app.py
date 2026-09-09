@@ -24,6 +24,7 @@ from oncall.api.investigation import (
     InvestigationDeps,
     create_investigation_router,
 )
+from oncall.api.kb import create_kb_router
 from oncall.api.remediation import RemediationDeps, create_remediation_router
 from oncall.api.routes import create_router
 from oncall.context.config import ContextConfig
@@ -35,10 +36,14 @@ from oncall.ingest.service import ingest_webhook
 if TYPE_CHECKING:
     from oncall.classify.service import ClassifyRuntime
     from oncall.context.promql import PromClient
+    from oncall.knowledge.pipeline import KnowledgePipeline
 
 DATABASE_URL_ENV = "ONCALL_DATABASE_URL"
 DEFAULT_DATABASE_URL = "sqlite:///./oncall.db"
 DEDUP_WINDOW_SECONDS_ENV = "ONCALL_DEDUP_WINDOW_SECONDS"
+KB_ENABLED_ENV = "ONCALL_KB_ENABLED"  # M6-T4：知识库装配开关（缺省关，测试零影响）
+KB_EMBEDDER_ENV = "ONCALL_KB_EMBEDDER"  # mock | bge（真实模型，T7 实测票用）
+KB_CHROMA_PATH_ENV = "ONCALL_CHROMA_PATH"  # 设置 → ChromaVectorStore；缺省内存索引
 
 
 def create_app(  # noqa: PLR0913, PLR0917 — 注入面持续增长（M2 classify → M3 investigation）；
@@ -50,6 +55,7 @@ def create_app(  # noqa: PLR0913, PLR0917 — 注入面持续增长（M2 classif
     classify_runtime: ClassifyRuntime | None = None,
     investigation: InvestigationDeps | None = None,
     remediation: RemediationDeps | None = None,
+    kb_pipeline: KnowledgePipeline | None = None,
 ) -> FastAPI:
     """应用工厂：测试注入内存库引擎与上下文替身；进程启动走环境变量配置。
 
@@ -118,9 +124,59 @@ def create_app(  # noqa: PLR0913, PLR0917 — 注入面持续增长（M2 classif
     # confirm approve 落 503 降级（proposal 留 approved 即终）；GET 查询照常可用
     if remediation is None:
         remediation = RemediationDeps()
+
+    # 知识库装配（M6-T4 / D-51–D-57）：env 开关缺省关——关闭时 kb_pipeline 为
+    # None（/kb/ingest 落 503、query_kb 落 stub、开局召回不启用），既有测试零影响
+    kb_enabled = os.environ.get(KB_ENABLED_ENV, "").strip().lower() in {"1", "true", "yes"}
+    if kb_enabled and kb_pipeline is None:
+        kb_pipeline = _kb_pipeline_from_env(engine)
+    if kb_pipeline is not None:
+        # D-56：recovered 后同步触发入库（best-effort，失败落日志不阻塞处置出口）
+        remediation = dataclasses.replace(remediation, kb_pipeline=kb_pipeline)
+        if investigation is not None and investigation.kb_retriever is None:
+            investigation = dataclasses.replace(
+                investigation, kb_retriever=kb_pipeline.retriever()
+            )
     app.include_router(create_remediation_router(engine, remediation))
+    app.include_router(create_kb_router(engine, kb_pipeline))
 
     return app
+
+
+def _kb_pipeline_from_env(engine: Engine) -> KnowledgePipeline:
+    """按环境变量装配知识管线（M6-T4；局部导入保「没配 KB 也能起」R6 语义）。
+
+    embedder：`ONCALL_KB_EMBEDDER=bge` 走本地 bge-small-zh-v1.5（D-51，T7 实测票
+    才默认启用——首载需下载模型）；缺省 mock（确定性向量，功能链路可验证）。
+    store：`ONCALL_CHROMA_PATH` 设置 → Chroma persistent（D-52）；缺省内存索引
+    （权威在 kb_chunks 表，可重建，D-55）。
+    """
+    from oncall.knowledge.embedder import MockEmbedder
+    from oncall.knowledge.pipeline import KnowledgePipeline
+    from oncall.knowledge.store import InMemoryVectorStore
+
+    embedder: object = MockEmbedder()
+    if os.environ.get(KB_EMBEDDER_ENV, "mock").strip().lower() == "bge":
+        from sentence_transformers import SentenceTransformer  # noqa: PLC0415（key/环境门槛票）
+
+        model = SentenceTransformer("BAAI/bge-small-zh-v1.5")
+
+        class _BgeEmbedder:
+            dimension = 512
+
+            def embed(self, texts: list[str]) -> list[list[float]]:
+                return model.encode(texts, normalize_embeddings=True).tolist()
+
+        embedder = _BgeEmbedder()
+    store = InMemoryVectorStore()
+    chroma_path = os.environ.get(KB_CHROMA_PATH_ENV)
+    if chroma_path:
+        from oncall.knowledge.store import ChromaVectorStore
+
+        store = ChromaVectorStore(path=chroma_path)
+
+    pipeline = KnowledgePipeline(engine, embedder, store)  # type: ignore[arg-type]
+    return pipeline
 
 
 def _with_default_opening_builder(

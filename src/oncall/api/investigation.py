@@ -39,7 +39,9 @@ from oncall.db.models import Investigation
 from oncall.db.views import investigation_report_body
 from oncall.harness.loop import InvestigationResult, LoopComponents, run_investigation
 from oncall.harness.session import HypothesisStatus, InvestigationSession
+from oncall.knowledge.recall import opening_recall
 from oncall.knowledge.report import build_closed_loop_report, render_closed_loop_markdown
+from oncall.knowledge.retriever import KbRetriever
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -183,10 +185,14 @@ class InvestigationDeps:
     `opening_builder` 缺省 None 时由组装点（create_app）按 context 配置兜底。
     M4-T3：D-25 的进程内报告注册表（InvestigationReportStore）整体退役，
     GET 读三表（本 dataclass 不再持有报告状态）。
+    M6-T4：`kb_retriever` 缺省 None 时开局召回与 query_kb 真实 RAG 不启用
+    （query_kb 落 registry stub，既有测试零回退）——注入后开局确定性召回
+    （D-54：非 Agent 步）与缓存复用出口（D-57）生效。
     """
 
     components: LoopComponents | None
     opening_builder: OpeningBuilder | None = None
+    kb_retriever: KbRetriever | None = None
 
 
 class InvestigateRequest(BaseModel):
@@ -215,6 +221,42 @@ def create_investigation_router(engine: Engine, deps: InvestigationDeps) -> APIR
                 raise HTTPException(
                     status_code=404, detail=f"incidents 不存在: id={req.incident_id}"
                 )
+            # M6-T4 开局召回（D-54/G6：确定性前置，不是 Agent 步、不占步数预算）：
+            # 指纹精确命中 + 源 mitigated → 缓存复用出口（D-57，不重查不建新调查）；
+            # 未命中向量相似 → kb 参考证据随报告返回（kb_reference 可选键）
+            kb_reference: list[dict[str, Any]] | None = None
+            if deps.kb_retriever is not None:
+                outcome = opening_recall(session, req.incident_id, deps.kb_retriever)
+                if outcome.kind == "reuse":
+                    src_row = session.scalar(
+                        select(Investigation).where(
+                            Investigation.incident_id == outcome.reused_from
+                        )
+                    )
+                    if src_row is None or src_row.status == "running":
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"复用源无可用报告: incident_id={outcome.reused_from}",
+                        )
+                    src_steps = list(
+                        session.scalars(
+                            select(EvidenceStepRow)
+                            .where(EvidenceStepRow.incident_id == outcome.reused_from)
+                            .order_by(EvidenceStepRow.step_no)
+                        )
+                    )
+                    src_hyps = list(
+                        session.scalars(
+                            select(HypothesisRow).where(
+                                HypothesisRow.incident_id == outcome.reused_from
+                            )
+                        )
+                    )
+                    body = investigation_report_body(src_row, src_steps, src_hyps)
+                    body["reused_from"] = outcome.reused_from
+                    return body
+                if outcome.kind == "reference":
+                    kb_reference = outcome.hits
             # 票面语义：status ≠ investigating 仍允许调查（不回写 incidents 行），
             # 报告如实记录本次调查结果；开局锚点 = alert_ids[0]（D-19 primary anchor）
             alert_id = incident.alert_ids[0] if incident.alert_ids else None
@@ -232,6 +274,9 @@ def create_investigation_router(engine: Engine, deps: InvestigationDeps) -> APIR
                     status_code=500, detail="调查执行发生非预期异常，已中止"
                 ) from exc
         report = build_report(result, opening)
+        if kb_reference:
+            # D-54：kb 参考证据（source=kb，语义 = 历史相似案例（参考）非事实）
+            report["kb_reference"] = kb_reference
         # opening_card 随行留存（本票裁决：JSON 列一次性留存，读路径零重建）；
         # 写在 finalize 之后（终态行已就位），incident_id 唯一约束保证只此一行
         with Session(engine) as db:
