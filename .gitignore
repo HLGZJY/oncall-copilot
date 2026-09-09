@@ -54,3 +54,6 @@ $RECYCLE.BIN/
 
 # 仓库损毁取证遗留（2026-09-09，勿提交勿删除）
 .git-broken-20260909/
+
+# readtrack 笔记项目（用户拍板保留在本地，不入库）
+.oncall-copilot-readtrack/
