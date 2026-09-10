@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: 无（M3-01~08 已 resolved；M7 issue 07 提供实测证据）
 
 # 09 planner 取证策略升级：先取证后 KB + 调查视图事件锚点（M7 issue 07 全 miss 复盘）
@@ -52,3 +52,28 @@ VerifierError 拦截）+ plan_error 9（畸形输出重试耗尽）+ timeout 8 +
 - 2026-09-10 建票：M7 issue 07 全 miss + 人工抽检 32/32 判定公道坐实 harness 缺口；
   百炼端点冒烟通过（qwen3.7-flash，JSON Mode + 关思考）。档位拍板：qwen3.7-flash +
   qwen3.8-max 被评、deepseek-v4-flash judge（余量 225K 只够 judge 小 token 面）。
+- 2026-09-10 落位（T9 执行期注记）：
+  - **①取证策略进系统提示**（`context_manager.FORENSICS_FIRST_STRATEGY`）：先取证后 KB、
+    KB 降级参考召回、禁 KB-only 假设（与 M6-T5 对齐非绕过）+ 同参重复禁令与及时收束准则；
+  - **②调查视图事件锚点**：`project_opening` 按需透传 `event_anchors`（复用
+    eval/evidence.py timeline 形态，D-37 键集合契约不破坏）；eval runner `_run_once`
+    由 golden 告警时间线构建 opening 注入（D-18 同源零标注泄漏）；**真实 client
+    `_messages_of` 此前丢弃 opening——模型根本看不到，已修复**（根因链实锤一环）；
+  - **③顺带修复两个吞结论的暗坑（探针实测定位）**：(a) `summarize_step` 指标只认
+    `query` 键，query_metrics/search_logs 步骤摘要恒 n/a → planner 无法分辨已查内容
+    → 同参重复烧步数，补 promql/selector 回退；(b) 输出协议原文「收束仅
+    `{"conclusion"}`」与 `PlannerDecision.thought` 必填契约矛盾——模型照协议收束必炸
+    plan_error，协议文案改为与契约一致（thought 恒必填，D-22 契约面零改动）；
+  - **④CONTEXT.md** 新增「事件锚点 / Event Anchors」词条；
+  - **门禁**：collect 833（基线 820 + 新增 13）全绿 exit=0，ruff check + format 双绿；
+    新测试 `tests/unit/test_m3_issue09_forensics_first.py`（13 例）：取证证实 / 仅 KB
+    拦截 / 混合支撑不拦 / 事件锚点注入与零泄漏 / 真实 client 透传 opening；
+  - **真实档冒烟（ONCALL_RUN_M7_EVAL=1，qwen3.7-flash × cpu-spike × 1 遍，
+    profile env 切换 G8 零硬编码）**：verdict=**top3**（judged_by=judge，
+    假设方向命中 CPU 打满）· **结论非空 ✔** · failure_mode=None · **0 次 VerifierError ✔**
+    · 6 步 / 15.6s · usage 实测：7 次调用，prompt 10,744 + completion 1,091 =
+    **11,835 tokens**，延迟 15.564s（单价 env 未配，cost 列显式 0 可追溯）。
+    对照 issue 07 同剧本：tool_error(VerifierError 拦截) → 全 miss；本票后防线不再
+    误拦、KB 污染消失。冒烟共 6 次尝试（含 3 次 15 步熔断/绕圈熔断、2 次 plan_error
+    ——即暗坑 a/b 的定位过程），最终一次达标；行为方差仍大，dev 全量重跑留验证票。
+- 2026-09-10 resolved：验收四项全过。

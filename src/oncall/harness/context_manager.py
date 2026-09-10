@@ -68,13 +68,29 @@ _TOOL_TABLE_HEADER = "## 工具一览（名称：一句话说明）"
 TOOL_SCHEMA_HEADER = "## 工具入参 schema（必填 / 可选 / 值域，派生自注册契约与运行时校验同源）"
 
 OUTPUT_PROTOCOL = """\
-## 输出协议（二选一互斥，只输出一个 JSON 对象）
+## 输出协议（两分支互斥，thought 恒必填，只输出一个 JSON 对象）
 - 继续调查（选工具）：{"thought": "<一句话依据>", "next_tool": "<工具名>", "args": {<入参>}}
-- 证据已足够（收束）：{"conclusion": "<结论与依据>"}"""
+- 证据已足够（收束）：{"thought": "<一句话依据>", "conclusion": "<结论与依据>"}
+（两分支都必带 thought；收束分支禁止再带 next_tool/args，选工具分支禁止带 conclusion）"""
 
 _TIME_ANCHOR_NOTE = (
     "时间窗缺省口径：以告警 last_fired_at 为锚取近期窗口（查「告警发生时」的状态）。"
 )
+
+# M3 issue 09（M7 issue 07 全 miss 复盘）：取证策略进系统提示——与 M6-T5
+# 知识污染防线对齐而非绕过：KB-only 假设会被 Verifier 按设计拦截。
+FORENSICS_FIRST_STRATEGY = """\
+## 取证策略（先取证后 KB）
+- 首轮必须先消费事件锚点（opening.event_anchors 告警时间线）与取证工具输出
+  （query_metrics / search_logs / detect_anomaly / get_topology），禁止开局直接 query_kb；
+- query_kb 降级为取证后参考召回：只在已有本源取证证据后用于对照历史相似案例；
+- 禁止提出仅由 query_kb 支撑的假设——kb 是历史参考非当前事实，仅 KB 支撑的
+  假设会被裁决层拦截；假设必须有取证证据步支撑；
+- 同一工具+同一参数只允许调用一次：重复调用会触发警告并最终熔断转人工；
+  需要新信息就换工具、换指标或换时间窗；
+- 取证证据（异常方向 / 时间窗 / 服务与告警清单）已能解释告警时**立即收束**：
+  基于已有证据给出结论，允许带不确定性表述；不要为「更确定」无限继续取证。\
+"""
 
 
 def estimate_tokens(text: str) -> int:
@@ -92,15 +108,22 @@ def summarize_step(step: EvidenceStep) -> str:
     """证据步 → 四要素摘要（纯函数，同输入同输出）。
 
     四要素来源（确定性约定）：组件 = `input_json["component"]`；
-    指标 = `input_json["query"]`；异常方向 = `output_json["direction"]`；
-    时间窗 = `input_json` 的 start/end。缺失一律 `n/a`。
+    指标 = 各工具主查询参数按序取第一个非空（`query` / `promql` /
+    `selector`，M3 issue 09：此前只认 `query`，query_metrics/search_logs
+    步骤摘要恒 n/a，planner 无法分辨已查内容→同参重复烧步数）；
+    异常方向 = `output_json["direction"]`；时间窗 = start/end。缺失一律 n/a。
     """
     start = _element(step.input_json, "start")
     end = _element(step.input_json, "end")
     window = NA_PLACEHOLDER if NA_PLACEHOLDER in (start, end) else f"[{start} ~ {end}]"
+    metric = NA_PLACEHOLDER
+    for key in ("query", "promql", "selector"):
+        if step.input_json.get(key):
+            metric = str(step.input_json[key])
+            break
     return SUMMARY_TEMPLATE.format(
         component=_element(step.input_json, "component"),
-        metric=_element(step.input_json, "query"),
+        metric=metric,
         direction=_element(step.output_json, "direction"),
         window=window,
     )
@@ -180,7 +203,7 @@ def build_system_prompt(estimator: TokenEstimator = estimate_tokens) -> str:
     lines.extend(f"- {spec.name}：{spec.description}" for spec in TOOL_SPECS)
     lines.extend(["", TOOL_SCHEMA_HEADER])
     lines.extend(render_tool_schema(spec) for spec in TOOL_SPECS)
-    lines.extend(["", OUTPUT_PROTOCOL, "", _TIME_ANCHOR_NOTE])
+    lines.extend(["", OUTPUT_PROTOCOL, "", FORENSICS_FIRST_STRATEGY, "", _TIME_ANCHOR_NOTE])
     prompt = "\n".join(lines)
     tokens = estimator(prompt)
     if tokens > SYSTEM_PROMPT_TOKEN_LIMIT:
@@ -230,6 +253,10 @@ def project_opening(opening: dict[str, Any] | None) -> dict[str, Any] | None:
     projected.update({key: alert.get(key) for key in _OPENING_ALERT_KEYS})
     sources = (opening.get("context") or {}).get("sources") or []
     projected["context_status"] = {source.get("source"): source.get("status") for source in sources}
+    # M3 issue 09：事件锚点（告警时间线，复用 eval/evidence.py timeline 形态）
+    # 按需透传——D-17 卡片不带此键时投影键集合不变（D-37 契约稳定）。
+    if "event_anchors" in opening:
+        projected["event_anchors"] = opening["event_anchors"]
     return projected
 
 

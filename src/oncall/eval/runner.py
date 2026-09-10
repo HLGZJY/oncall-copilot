@@ -76,6 +76,26 @@ def require_real_tier() -> None:
         )
 
 
+def _event_anchors(golden: GoldenScenario) -> dict[str, object]:
+    """golden 告警时间线 → 事件锚点（M3 issue 09；形态复用 eval/evidence.py
+    timeline 证据面，D-18 同源——零 root_cause/remediation 标注泄漏）。"""
+    alerts = [
+        {
+            "alert_name": entry["alert_name"],
+            "labels": entry["labels"],
+            "fired_at": entry["fired_at"],
+            "resolved_at": entry["resolved_at"],
+        }
+        for run in golden.runs
+        for entry in run["alert_timeline"]  # type: ignore[union-attr]
+    ]
+    runs = [
+        {"started_at": run.get("started_at"), "recovered_at": run.get("recovered_at")}
+        for run in golden.runs
+    ]
+    return {"runs": runs, "alerts": alerts}
+
+
 def _run_once(
     components: LoopComponents, golden: GoldenScenario, run_idx: int
 ) -> tuple[InvestigationResult, float]:
@@ -83,10 +103,13 @@ def _run_once(
 
     评测运行无事件锚点（eval_runs 与 investigations 分表不混，D-62），
     会话 incident_id 用 run_idx+1 占位仅供主循环计数，不落 incidents 表。
+    M3 issue 09：opening 注入 golden 告警时间线事件锚点——消除「只有拓扑
+    没有事件」的盲调查态（M5 issue 08 注记兑现）。
     """
     session = InvestigationSession(incident_id=run_idx + 1)
+    opening = {"alert": {}, "context": {}, "event_anchors": _event_anchors(golden)}
     started = time.perf_counter()
-    result = run_investigation(session, components)
+    result = run_investigation(session, components, opening=opening)
     return result, time.perf_counter() - started
 
 

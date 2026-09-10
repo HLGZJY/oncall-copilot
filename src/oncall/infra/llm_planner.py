@@ -121,9 +121,16 @@ class OpenAIPlannerClient:
 
 
 def _messages_of(context_view: Mapping[str, Any]) -> list[dict[str, str]]:
-    """视图 → messages：协议在 system（harness 权威），调查状态在 user。"""
+    """视图 → messages：协议在 system（harness 权威），调查状态在 user。
+
+    M3 issue 09：opening（含事件锚点 event_anchors）一并进 user 视图——
+    此前 opening 只在 harness 视图内、真实 client 丢弃，模型看不到告警
+    时间线（M7 issue 07 根因链实锤一环）。
+    """
     user_view = {
-        key: context_view[key] for key in ("steps", "hypotheses", "notices") if key in context_view
+        key: context_view[key]
+        for key in ("steps", "hypotheses", "notices", "opening")
+        if key in context_view
     }
     user_content = json.dumps(user_view, ensure_ascii=False, sort_keys=True)
     return [
