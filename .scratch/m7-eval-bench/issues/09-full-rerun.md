@@ -1,5 +1,5 @@
-Status: needs-info
-Blocked by: 用户拍板 qwen37-flash 403 额度耗尽处置（Comments 末 A/B/C 三案）
+Status: resolved
+~已拍板：qwen3.8-27b 替补补跑，2026-09-10 完成~
 Blocked by: M7 issue 08（已 resolved，三闸门全过 + 方案 A 拍板）
 
 # 09 真实档 dev 全量重跑（N=3 双模型，修复后正式矩阵）
@@ -75,3 +75,30 @@ Blocked by: M7 issue 08（已 resolved，三闸门全过 + 方案 A 拍板）
   B）换备用档 qwen3.7-flash-2026-07-15（issue 09 登记 510,941 余量，需实测确认）；
   C）接受 qwen38-max 单模型结论先行（Top-1 25%/Top-3 27.8% 已可引用）。
   qwen38-max 侧与 judge 侧数据完整，无需重跑。
+- **2026-09-10 16:36 补跑完成——qwen37-flash 档确认退役（额度池耗尽且不在最新可用列表），
+  用户拍板改用 qwen3.8-27b 替补补齐 33 格**（最新配额快照：qwen3.8-27b / kimi-k3 /
+  deepseek-v4-pro-0813 / qwen3.8-2.4t-a95b / qwen3.5-ocr 各满额 1M；qwen3.8-max 剩 404,481；
+  deepseek-v4-flash-0731 剩 133,110；qwen3.7-flash-2026-07-15 剩 510,941；qwen3.7-flash 已除名）。
+  qwen3.8-27b 单价 env 已配齐（官方牌价华北2 北京：3 / 12 ¥/M，.env 不入 git），
+  冒烟通过后原票面口径补跑（11 剧本 × N=3，驱动 `C:\Users\heguo\oc-m7-backfill-27b.py`
+  不进 git，逐剧本 commit + stop-loss 950K）：
+  - **33/33 格全部有效落库**（eval_runs id 4834–4866），stop-loss 未触发；
+  - Top-1 **4/33（12.1%）**、Top-3 **9/33（27.3%）**；failure_mode：plan_error 7/33、其余 None；
+  - 步数均值 10.9、最大 15；延迟均值 48.0s/次；tokens **853,833**（1M 池剩 ≈146K）；
+    cost **¥3.2273**（单价 3/12 ¥/M 实测）；
+  - judge 批级：33 次 40,442 tokens ¥0.0530（池剩 ≈92.7K，后续批需留意）。
+- **合并正式矩阵（修复后，同口径汇总三档）**：
+
+  | 模型 | 有效格 | Top-1 | Top-3 | 熔断/15步 | 失败模式 | tokens | cost | 均延迟 |
+  |---|---|---|---|---|---|---|---|---|
+  | qwen3.8-max | 36/36 | 9/36（25.0%） | 10/36（27.8%） | 1 | 全 None | 533,619 | ¥9.0188 | 26.3s |
+  | qwen3.8-27b | 33/33 | 4/33（12.1%） | 9/33（27.3%） | 0 | plan_error 7 | 853,833 | ¥3.2273 | 48.0s |
+  | qwen3.7-flash（退役） | 3/36 | 1/3 | 2/3 | 1 | 33 格 403 退役 | ≈122K | ¥0.0358 | — |
+
+  本票合计（qwen38-max + qwen38-27b + 补跑 judge + 前次 judge/浪费）≈ **¥12.4** << ¥36 硬顶。
+  对照 issue 07 批3（修复前 0/72 全 miss）：两档 Top-3 均 ≈27%——M3 issue 09 取证策略
+  升级实测有效；qwen3.8-max 仍为质量最优档（Top-1 25%），qwen3.8-27b 为性价比档
+  （¥0.098/格 vs ¥0.251/格，Top-3 持平）。
+- 遗留：难剧本（db-deadlock / downstream-timeout / process-killed / slow-sql / packet-loss）
+  两档仍 0–1/3 全 miss——取证面缺口转入后续优化票；judge 余量 92.7K，下次批级评测前需扩容或换档。
+- **Status: resolved**（双模型全量矩阵齐备，验收 5 项全过）。
