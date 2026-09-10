@@ -1,0 +1,200 @@
+{
+  "generated_at": "2026-09-10T07:32:44.199635+00:00",
+  "source": "eval_runs",
+  "profiles": [
+    "qwen37-flash",
+    "qwen38-max"
+  ],
+  "groups": [
+    {
+      "run_ids": [
+        4756
+      ],
+      "scenario": "cpu-spike",
+      "model": "qwen37-flash",
+      "the_set": "dev",
+      "n_runs": 1,
+      "unstable": false,
+      "total": 1,
+      "eligible": 0,
+      "top1_hits": 0,
+      "top3_hits": 0,
+      "top1_rate": null,
+      "top3_rate": null,
+      "rates_defined": false,
+      "miss_count": 0,
+      "reused_count": 0,
+      "escalated_count": 1,
+      "steps_avg": 6.0,
+      "steps_range": 0.0,
+      "duration_avg": 16.40557689999696,
+      "duration_range": 0.0,
+      "cost_avg": 0.0,
+      "cost_range": 0.0,
+      "failure_modes": {},
+      "failure_mode": null,
+      "unknown_requires_human": false
+    },
+    {
+      "run_ids": [
+        4759
+      ],
+      "scenario": "cpu-spike",
+      "model": "qwen38-max",
+      "the_set": "dev",
+      "n_runs": 1,
+      "unstable": false,
+      "total": 1,
+      "eligible": 1,
+      "top1_hits": 1,
+      "top3_hits": 1,
+      "top1_rate": 1.0,
+      "top3_rate": 1.0,
+      "rates_defined": true,
+      "miss_count": 0,
+      "reused_count": 0,
+      "escalated_count": 0,
+      "steps_avg": 7.0,
+      "steps_range": 0.0,
+      "duration_avg": 26.36307669999951,
+      "duration_range": 0.0,
+      "cost_avg": 0.0,
+      "cost_range": 0.0,
+      "failure_modes": {},
+      "failure_mode": null,
+      "unknown_requires_human": false
+    },
+    {
+      "run_ids": [
+        4757
+      ],
+      "scenario": "db-deadlock",
+      "model": "qwen37-flash",
+      "the_set": "dev",
+      "n_runs": 1,
+      "unstable": false,
+      "total": 1,
+      "eligible": 0,
+      "top1_hits": 0,
+      "top3_hits": 0,
+      "top1_rate": null,
+      "top3_rate": null,
+      "rates_defined": false,
+      "miss_count": 0,
+      "reused_count": 0,
+      "escalated_count": 1,
+      "steps_avg": 9.0,
+      "steps_range": 0.0,
+      "duration_avg": 21.62436499999967,
+      "duration_range": 0.0,
+      "cost_avg": 0.0,
+      "cost_range": 0.0,
+      "failure_modes": {},
+      "failure_mode": null,
+      "unknown_requires_human": false
+    },
+    {
+      "run_ids": [
+        4760
+      ],
+      "scenario": "db-deadlock",
+      "model": "qwen38-max",
+      "the_set": "dev",
+      "n_runs": 1,
+      "unstable": false,
+      "total": 1,
+      "eligible": 1,
+      "top1_hits": 0,
+      "top3_hits": 0,
+      "top1_rate": 0.0,
+      "top3_rate": 0.0,
+      "rates_defined": true,
+      "miss_count": 1,
+      "reused_count": 0,
+      "escalated_count": 0,
+      "steps_avg": 6.0,
+      "steps_range": 0.0,
+      "duration_avg": 27.792448200001672,
+      "duration_range": 0.0,
+      "cost_avg": 0.0,
+      "cost_range": 0.0,
+      "failure_modes": {
+        "unknown": 1
+      },
+      "failure_mode": "unknown",
+      "unknown_requires_human": true
+    },
+    {
+      "run_ids": [
+        4758
+      ],
+      "scenario": "pool-exhaustion",
+      "model": "qwen37-flash",
+      "the_set": "dev",
+      "n_runs": 1,
+      "unstable": false,
+      "total": 1,
+      "eligible": 1,
+      "top1_hits": 1,
+      "top3_hits": 1,
+      "top1_rate": 1.0,
+      "top3_rate": 1.0,
+      "rates_defined": true,
+      "miss_count": 0,
+      "reused_count": 0,
+      "escalated_count": 0,
+      "steps_avg": 9.0,
+      "steps_range": 0.0,
+      "duration_avg": 26.309166499999264,
+      "duration_range": 0.0,
+      "cost_avg": 0.0,
+      "cost_range": 0.0,
+      "failure_modes": {},
+      "failure_mode": null,
+      "unknown_requires_human": false
+    },
+    {
+      "run_ids": [
+        4761
+      ],
+      "scenario": "pool-exhaustion",
+      "model": "qwen38-max",
+      "the_set": "dev",
+      "n_runs": 1,
+      "unstable": false,
+      "total": 1,
+      "eligible": 1,
+      "top1_hits": 0,
+      "top3_hits": 0,
+      "top1_rate": 0.0,
+      "top3_rate": 0.0,
+      "rates_defined": true,
+      "miss_count": 1,
+      "reused_count": 0,
+      "escalated_count": 0,
+      "steps_avg": 11.0,
+      "steps_range": 0.0,
+      "duration_avg": 36.940234199999395,
+      "duration_range": 0.0,
+      "cost_avg": 0.0,
+      "cost_range": 0.0,
+      "failure_modes": {
+        "unknown": 1
+      },
+      "failure_mode": "unknown",
+      "unknown_requires_human": true
+    }
+  ],
+  "judge_usage_real": {
+    "calls": 6,
+    "prompt_tokens": 4626,
+    "completion_tokens": 1534,
+    "total_tokens": 6160,
+    "latency_seconds": 23.88,
+    "cost_cny": 0.007694,
+    "price_env": {
+      "PRICE_IN": 1.0,
+      "PRICE_OUT": 2.0
+    }
+  }
+}
