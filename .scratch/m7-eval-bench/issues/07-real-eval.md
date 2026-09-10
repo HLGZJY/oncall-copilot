@@ -28,3 +28,4 @@ Blocked by: 06
 - **结论（实测）**：当前 harness 证据面 + M6-T5 防线交互下，两档被评模型均无法产出可证实结论——planner 大量引用 KB 而非仅凭取证面证据，质量差异不可分；「真实 Planner 调查视图缺事件锚点（M5 issue 08 注记）」是首要嫌疑，列为后续 harness 缺口票候选
 - **待人工抽检 20%**（judged_by=judge 的 18 行全量人工复核 + judged_by=rule 随机 14 行；已留 eval_runs id 3100–3171 可回溯）：抽检结果请追加到本 Comments（未做前 Top-1/Top-3 数字按「待人工确认」口径引用）
 - 验收自检：①真实档入口可达并跑通端到端 ✓（eval_runs id 3100–3171 + usage 实测）；②双产物 datasets/eval/ 落盘 + 档位结论实测回填 CONTEXT.md ✓；③全量 pytest EXIT=0（collect 820）+ ruff 双检绿 + CI 面未污染真实档 ✓
+- **2026-09-10 人工抽检结果**（audit-20260910.md）：judged_by=judge 全量 18 行 + judged_by=rule 随机 14 行（seed=7），共 32 行，**✔一致 32 / ✘误判 0 / △部分 0**——judge 与 rule 判 miss 均公道，无误判。Top-1/Top-3 口径从「待人工确认」转为正式：**Top-1 = 0 / Top-3 = 0 / miss = 72（100%）**。失败模式分布：tool_error 54（VerifierError）+ plan_error 9 + timeout 8 + unknown 1。根因确认：planner 引用 KB 而非仅凭取证面证据 → M6-T5 知识污染防线拦截 → 结论/假设均空 → 全量 miss，非性能/成本问题，系 harness 证据面缺口（M5 issue 08 注记：Planner 调查视图缺事件锚点）。
